@@ -1,4 +1,32 @@
+
+## Greasy react hack
+Create a bundle using `npm run-script buildSrc`, add it to the `public` folder in a react app. 
+Add the following to load it within a react app. 
+```
+useEffect(() => {
+  const script = document.createElement('script');
+
+  // script.src = "https://use.typekit.net/foobar.js";
+  // script.src = "../../../node_modules/smartcontract-app/src/smartcontract-app.js";
+  // script.src = "../../../node_modules/smartcontract-app/src/smartcontract-app.js";
+  script.src = "/smartcontract-app.js"
+  script.async = true;
+  let scriptLoaded = function() {
+    document.body.appendChild(window.displayContractUI(testData))
+  }
+  script.onload = () => scriptLoaded();
+
+  document.body.appendChild(script);
+
+  return () => {
+    document.body.removeChild(script);
+  }
+}, []);
+```
+
+
 [![Join the chat at https://gitter.im/playproject-io/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/playproject-io/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 
 # contract ui
 
