@@ -58,7 +58,9 @@ async function getProvider() {
 /*--------------------
       PAGE
 --------------------*/
-module.exports = displayContractUI
+module.exports = displayContractUI;
+// needed for greasy react hack
+window.displayContractUI = displayContractUI;
 
 function displayContractUI(result) {   // compilation result metadata
   var opts = {
