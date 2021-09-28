@@ -1,9 +1,6 @@
 const solcjs = require('solc-js')
-// var solc = require('solc');
 
 const smartcontractapp = require('../')
-
-const vefabi = require('./sampleContracts/vef.abi.json');
 
 ;(async () => {
   const select = await solcjs.versions().catch(printError)
@@ -11,8 +8,6 @@ const vefabi = require('./sampleContracts/vef.abi.json');
   const version = getCompilerVersion(releases, sourcecode)
   const compiler = await solcjs(version).catch(printError)
   const result = await compiler(sourcecode).catch(printError)
-  console.log(result)
-  result[0].abi = vefabi;
   document.body.appendChild(smartcontractapp(result))
 })()
 
