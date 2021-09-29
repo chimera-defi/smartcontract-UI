@@ -19606,776 +19606,16 @@ module.exports = {
 
 }).call(this)}).call(this,{"isBuffer":require("../../is-buffer/index.js")})
 },{"../../is-buffer/index.js":57,"bn.js":5,"eth-lib/lib/hash":28,"ethereum-bloom-filters":29,"number-to-bn":60,"utf8":75}],79:[function(require,module,exports){
-const ethers = require('ethers')
-const bigNumber = require('bignumber.js')
-
-module.exports = convertToEther
-
-function convertToEther (currency, amount) {
-  var amount = getAmount(currency, amount)
-  amount = ethers.utils.formatEther(amount)
-  return ethers.utils.parseEther(amount)
-}
-
-function formatAmount (exponent, amount) {
-  var base = new bigNumber(1000)
-  return base.exponentiatedBy(exponent).multipliedBy(amount).toFormat().split(',').join('')
-}
-
-function getAmount (currency, amount) {
-  var base = new bigNumber(1000)
-  if (currency === 't-ether') return formatAmount(10, amount)
-  if (currency === 'g-ether') return formatAmount(9, amount)
-  if (currency === 'm-ether') return formatAmount(8, amount)
-  if (currency === 'k-ether') return formatAmount(7, amount)
-  if (currency === 'ether')   return formatAmount(6, amount)
-  if (currency === 'milli')   return formatAmount(5, amount)
-  if (currency === 'micro')   return formatAmount(4, amount)
-  if (currency === 'g-wei')   return formatAmount(3, amount)
-  if (currency === 'm-wei')   return formatAmount(2, amount)
-  if (currency === 'k-wei')   return formatAmount(1, amount)
-  if (currency === 'wei')     return amount
-}
-
-},{"bignumber.js":4,"ethers":32}],80:[function(require,module,exports){
-const ethers = require('ethers')
-
-module.exports = decodeReturnData
-
-function decodeReturnData (txReturn, txTypes) {
-  var result
-  if (Array.isArray(txReturn)) {  // recursive case
-    result = txReturn.map((x, i) => decodeReturnData(x, getTypes(txTypes, i)))
-    return result
-  } else { // atomic case
-    result = decode(txReturn, getTypes(txTypes, 0))
-    return result
-  }
-}
-
-function decode (txReturn, txType) {
-  var type = txType.type
-  if (type.includes('int')) return txReturn.toString()
-  else return txReturn
-}
-
-function getTypes(types, i) {
-  if (types.components) types = types.components
-  else if (Array.isArray(types)) {
-    if (types[i].type) types = types[i]
-  }
-  else types = types
-  return types
-}
-
-},{"ethers":32}],81:[function(require,module,exports){
-const bigNumber = require('bignumber.js')
-const ethers = require('ethers')
-const convertToEther = require('convertToEther')
-
-module.exports = getArgs
-
-function getArgs( element, selector ) {
-  var args = []
-  var overrides = {}
-  var fields = element.querySelectorAll(`[class^=${selector}]`)
-  for (var i=0; i<fields.length; i++) {
-    var x = fields[i]
-    let title = x.children[0].title
-     /* -----------------------------------------
-                       PAYABLE
-    --------------------------------------------*/
-    if (title.includes('payable')) {
-      var inputs = x.querySelector("[class^='inputArea']").children
-      var amount = inputs[0].value
-      var currency = inputs[1].value
-      // The amount to send with the transaction (i.e. msg.value)
-      overrides.gasLimit = 3000000
-      overrides.value = convertToEther(currency, amount)
-      /* -----------------------------------------
-                    NOT PAYABLE
-     --------------------------------------------*/
-    } else {
-      // ------------ ARRAY ---------------------
-      if (title.includes('[')) {
-        var argumentsInArr = []
-        // ARRAY of BOOL
-        if (title.includes('bool')) {
-        let inputs = x.querySelectorAll("[class^='booleanField']")
-        inputs.forEach(y => {
-          argumentsInArr.push(getBool(y))
-        })
-      }
-      // ARRAY of INT/UINT
-      else if (title.includes('int')) {
-        let inputs = x.querySelectorAll("[class^='integerValue']")
-        inputs.forEach(y => {
-          argumentsInArr.push(getArgument(y, y.value))
-        })
-      }
-      // ARRAY of BYTES
-      else if (title.includes('byte')) {
-        let inputs = x.querySelectorAll("[class^='byteField']")
-        inputs.forEach(y => {
-          let el = y.querySelector('input')
-          argumentsInArr.push(getByte(el))
-        })
-      } else {
-        // ARRAY of OTHER TYPES
-        var inputs = x.querySelectorAll('input')
-        inputs.forEach(z => {
-          let el = z
-          let val = z.value
-          argumentsInArr.push(getArgument(el, val))
-        })
-      }
-      args.push(argumentsInArr)
-      }
-      // ------------ NOT ARRAY ---------------------
-      // BOOLEAN
-      else if (title.includes('bool')) {
-        var boolField = x.querySelector("[class^='booleanField']")
-        args.push(getBool(boolField))
-      }
-      // BYTE
-      else if (title.includes('byte')) {
-        var el = x.querySelector('input')
-        args.push(getByte(el))
-      }
-      else {
-      // OTHER TYPES
-        let el = title.includes('int') ? x.querySelectorAll('input')[1] : x.querySelector('input')
-        let val = el.value
-        args.push(getArgument(el, val))
-      }
-    }
-
-  }
-  return {args, overrides}
-}
-
-function getByte (el) {
-  return el.value
-}
-
-function getBool (boolField) {
-  var val
-  let falseField = boolField.children[0]
-  let trueField = boolField.children[1]
-  if (falseField.dataset.state === "active") val = false
-  else if (trueField.dataset.state === "active") val = true
-  return val
-}
-
-function getArgument(el, val) {
-  var argument
-  if ((el.dataset.type.search(/\buint/) != -1) || (el.dataset.type.search(/\bint/) != -1) || (el.dataset.type.search(/\bfixed/) != -1)) {
-    if (val > Number.MAX_SAFE_INTEGER) {
-      let number = bigNumber(Number(val)).toFixed(0)
-      argument = ethers.utils.bigNumberify(number.toString())
-    } else {
-      argument = Number(val)
-    }
-  }
-  if (el.dataset.type.search(/\bbyte/) != -1) {
-    argument = ethers.utils.formatBytes32String(val)
-  }
-  if (el.dataset.type.search(/\bstring/) != -1) argument = val
-  if (el.dataset.type.search(/\baddress/) != -1) argument = val
-  return argument
-}
-
-},{"bignumber.js":4,"convertToEther":79,"ethers":32}],82:[function(require,module,exports){
-module.exports = getDate
-
-function getDate () {
-  var today = new Date();
-  // var dd = today.getDate();
-  // var mm = today.getMonth() + 1; //January is 0!
-  // var yyyy = today.getFullYear();
-  //
-  // if (dd < 10) {
-  //   dd = '0' + dd;
-  // }
-  //
-  // if (mm < 10) {
-  //   mm = '0' + mm;
-  // }
-  //
-  // today = mm + '/' + dd + '/' + yyyy;
-
-  return `${today}`.split('(')[0]
-
-}
-
-},{}],83:[function(require,module,exports){
-module.exports = word => glossary[word]
-
-var glossary = {
-  pure: `This function is a PURE FUNCTION, which doesn't modify nor read the state. This type of function is free (costs no gas)).`,
-  view: `This function is a VIEW FUNCTION (a call), which returns information from the Ethereum network and costs no gas (it's free).`,
-  payable: `This function is a PAYABLE FUNCTION, which enables to send ETH while being called. This type of function will cost you gas (execution fee).`,
-  nonpayable: `This function is a NONPAYABLE FUNCTION, which changes the state of the contract on the Ethereum network and it will cost you some gas (execution fee).`,
-  undefined: `Type of this function is not defined.`
-}
-
-},{}],84:[function(require,module,exports){
-const bel = require("bel")
 const colors = require('theme')
-const csjs = require("csjs-inject")
-const ethers = require('ethers')
-var css
-
-module.exports = inputPayable
-
-function inputPayable (label) {
-
-  return bel`
-    <div class=${css.inputContainer}>
-      <div class=${css.title} title="data type: ${label}">value</div>
-      <div class=${css.inputArea}>
-        <input class=${css.input} placeholder="999" oninput=${validate}>
-        ${currencySelector()}
-      </div>
-      <div class=${css.ethIcon} title="Select amount you want to send with this function!"><i class="fab fa-ethereum"></i></div>
-    </div>`
-}
-
-  function validate (e) {
-    // @TODO
-  }
-
-function currencySelector () {
-  var button = bel`
-    <select class=${css.currency}>
-      <option value="wei">wei</option>
-      <option value="k-wei">k-wei</option>
-      <option value="m-wei">m-wei</option>
-      <option value="g-wei">g-wei</option>
-      <option value="micro">micro</option>
-      <option value="milli">milli</option>
-      <option value="ether">ether</option>
-      <option value="k-ether">k-ether</option>
-      <option value="m-ether">m-ether</option>
-      <option value="g-ether">g-ether</option>
-      <option value="t-ether">t-ether</option>
-    </select>`
-  return button
-}
-
-css = csjs`
-.inputContainer {
-  display: flex;
-  align-items: center;
-  margin: 15px 0 15px 0;
-}
-.title {
-  justify-content: center;
-  color: ${colors.slateGrey};
-  font-size: 0.9rem;
-  display: flex;
-  min-width: 200px;
-}
-.inputArea {
-  display: flex;
-  align-items: center;
-  max-width: 300px;
-}
-.input {
-  width: 194px;
-  background-color: ${colors.darkSmoke};
-  border-radius: 0.2em;
-  color: ${colors.whiteSmoke};
-  border: 1px solid ${colors.slateGrey};
-  text-align: center;
-  font-size: 0.9rem;
-  padding: 5px;
-  margin-right: 5px;
-}
-.currency {
-  width: 88px;
-  border-radius: 0.2em;
-  border: 1px solid ${colors.slateGrey};
-  padding: 5px 7px;
-  color: ${colors.slateGrey};
-  background-color: ${colors.darkSmoke};
-}
-.ethIcon {
-  color: ${colors.orange};
-  font-size: 1.2rem;
-  display: flex;
-  align-self: center;
-  padding-left: 10px;
-}
-`
-
-},{"bel":3,"csjs-inject":11,"ethers":32,"theme":90}],85:[function(require,module,exports){
+const {css} = require('./css');
 const bel = require("bel")
-const csjs = require("csjs-inject")
-
-module.exports = loadingAnimation
-
-function loadingAnimation (colors) {
-  const css = csjs`
-  .loader:before {
-    content: "";
-    position: absolute;
-    width: 4px;
-    height: 4px;
-    top: 45%;
-    left: 78%;
-    background-color: ${colors.whiteSmoke};
-    animation: rotatemove 1.5s infinite;
-    border-radius: 50%;
-  }
-
-  @keyframes rotatemove {
-    0%{
-      -webkit-transform: scale(1) translateX(0px);
-      -ms-transform: scale(1) translateX(0px);
-      -o-transform: scale(1) translateX(0px);
-      transform: scale(1) translateX(0px);
-    }
-
-    100%{
-      -webkit-transform: scale(2) translateX(45px);
-      -ms-transform: scale(2) translateX(45px);
-      -o-transform: scale(2) translateX(45px);
-      transform: scale(2) translateX(45px);
-    }
-  }`
-  // @TODO: fix theming to not create 10000 style tags for 1000 spinners
-  return bel`<div class=${css.loader}></div>`
-}
-
-},{"bel":3,"csjs-inject":11}],86:[function(require,module,exports){
-const bel = require("bel")
-const csjs = require('csjs-inject')
-const colors = require('theme')
-const date = require('getDate')
-const copy = require('copy-text-to-clipboard')
-const moreInfo = require('moreInfo')
-
-module.exports = makeDeployReceipt
-
-var css = csjs`
-.txReceipt {
-  display:flex;
-  justify-content: flex-start;
-  flex-direction: column;
-  margin-left: 1em;
-}
-.txReturnField {
-  display:flex;
-  justify-content: flex-start;
-  flex-direction: column;
-  margin-bottom: 2%;
-}
-.txReturnTitle {
-  color: ${colors.lightGrey};
-  margin-right: 5px;
-  width: 50%;
-}
-.txReturnValue {
-  color: ${colors.slateGrey};
-  cursor: pointer;
-  word-break: break-all;
-}
-.txReturnValue:hover {
-  cursor: pointer;
-  opacity: 0.6;
-}
-.date {}
-`
-
-function makeDeployReceipt (provider, contract, connected) {
-  var el
-  if (!connected) {
-    return bel`
-    <div class=${css.txReceipt}>
-      <div class=${css.txReturnField}>
-        <div class=${css.txReturnTitle}>published</div>
-        <div class=${css.txReturnValue}>${date()}</div>
-      </div>
-      <div class=${css.txReturnField}
-        title="${contract.deployTransaction.creates}"
-        onclick=${()=>copy(contract.deployTransaction.creates)}>
-        <div class=${css.txReturnTitle}>contract address (${provider._network.name}):</div>
-        <div class=${css.txReturnValue}>${contract.deployTransaction.creates}</div>
-      </div>
-      <div class=${css.txReturnField} title="${contract.deployTransaction.from}"
-        onclick=${()=>copy(contract.deployTransaction.from)}>
-        <div class=${css.txReturnTitle}>published by</div>
-        <div class=${css.txReturnValue}>${contract.deployTransaction.from}</div>
-      </div>
-      ${moreInfo(provider._network.name, contract.deployTransaction.hash)}
-    </div>`
-  } else if (connected) {
-    return bel`
-    <div class=${css.txReceipt}>
-      <div class=${css.txReturnField}
-        onclick=${()=>copy(contract.address)}>
-        <div class=${css.txReturnTitle}>connected to contract:</div>
-        <div class=${css.txReturnValue}>${contract.address}</div>
-      </div>
-    </div>`
-  }
-}
-
-},{"bel":3,"copy-text-to-clipboard":8,"csjs-inject":11,"getDate":82,"moreInfo":88,"theme":90}],87:[function(require,module,exports){
-const bel = require("bel")
-const moreInfo = require('moreInfo')
-const csjs = require('csjs-inject')
-const colors = require('theme')
-const decodeReturnData = require('decodeReturnData')
-
-module.exports = makeReturn
-
-async function makeReturn (opts) {
-//async function makeReturn (contract, solcMetadata, provider, tx, fnName) {
-  var el = bel`<div class=${css.txReturnItem}></div>`
-  const data = getReturnData(opts)
-  el.appendChild(makeTxReturn(css, data))
-  return el
-}
-
-function getReturnData (opts) {
-  var iface = new ethers.utils.Interface(opts.solcMetadata.output.abi)
-  var fun = opts.contract.interface.functions[opts.fnName]
-  return decodeReturnData(opts.tx, fun.outputs)
-}
-
-function makeTxReturn (css, data) {
-  return bel`
-    <div class=${css.txReceipt}>
-        <div class=${css.txReturnField}>
-          <div class=${css.txReturnValue}>${JSON.stringify(data, null, 2)}</div>
-        </div>
-    </div>`
-}
-
-var css = csjs`
-.txReturnItem {
-  position: relative;
-  font-size: 0.7rem;
-  display: flex;
-  color: ${colors.whiteSmoke};
-  border: 1px solid ${colors.darkSmoke};
-  width: 87%;
-  margin: 3%;
-  padding: 3%;
-  justify-content: space-between;
-  flex-direction: column;
-}
-.txReceipt {
-  display:flex;
-  justify-content: flex-start;
-  flex-direction: column;
-}
-.txReturnField {
-  display:flex;
-  justify-content: flex-start;
-  flex-direction: column;
-  margin-bottom: 1%;
-}
-.txReturnValue {
-  color: ${colors.slateGrey};
-  cursor: pointer;
-  word-break: break-all;
-}
-.txReturnValue:hover {
-  cursor: pointer;
-  opacity: 0.6;
-}`
-
-},{"bel":3,"csjs-inject":11,"decodeReturnData":80,"moreInfo":88,"theme":90}],88:[function(require,module,exports){
-const colors = require('theme')
-const bel = require('bel')
-const csjs = require('csjs-inject')
-
-module.exports = moreInfo
-
-var css = csjs`
-  .infoIcon {
-    position: absolute;
-    right: 5px;
-    bottom: 0px;
-    color: ${colors.slateGrey};
-  }
-  .infoIcon a {
-    font-size: 1.3em;
-    text-decoration: none;
-    color: ${colors.whiteSmoke};
-  }
-  .infoIcon a:hover {
-    opacity: 0.6;
-  }
-`
-
-function moreInfo (network, txHash) {
-  var linkToExplorer =
-  "https://" + network  + ".etherscan.io/tx/" + txHash
-  return bel`<div class=${css.infoIcon}
-    title="Take me to the block explorer">
-      <a href=${linkToExplorer}
-        target="_blank"><i class="fa fa-info-circle"></i>
-      </a>
-    </div>`
-}
-
-},{"bel":3,"csjs-inject":11,"theme":90}],89:[function(require,module,exports){
-module.exports = shortenHexData
-
-function shortenHexData (data) {
-  if (!data) return ''
-  if (data.length < 5) return data
-  var len = data.length
-  return data.slice(0, 10) + '...' + data.slice(len - 10, len)
-}
-
-},{}],90:[function(require,module,exports){
-module.exports = theme()
-
-function theme () {
-  var colors = {
-    transparent: "transparent",
-    white: "#ffffff", // borders, font on input background
-    dark: "#2c323c", //background dark
-    darkSmoke: '#21252b',  // separators
-    whiteSmoke: "#dcd7d7", // background light
-    slateGrey: "#8a929b", // text
-    lightGrey: "#F1F2EB",
-    orange: "#ffc459", // used as false in bool
-    violetRed: "#fd547d",  // fail
-    aquaMarine: "#90FCF9",  // used as true in bool
-    turquoise: "#14b9d5",
-    yellow: "#F2CD5D",
-    lavender: "#db94ff",
-    androidGreen: "#9BC53D" // success
-  }
-  return colors
-}
-
-
-/*
-module.exports = select
-
-function select (theme = 'oldTheme') {
-  return themes[theme]
-}
-
-// define colors
-const bluePurple = '#6700ff'
-const lightGreen = '#09FFC3'
-const lightGreenHover = '#A1FFE8'
-const greyEB = '#EBEBEB'
-const grey8D = '#8D8D8D'
-const grey31 = '#313136'
-const grey33 = '#333333'
-const greyBB = '#BBBBBB'
-const white = '#ffffff'
-const dark18 = '#181920'
-const dark1d = '#1d1d26'
-const peach = 'rgba(255, 41,117, 100)'
-const transparent = 'rgba(0,0,0,0)'
-
-// define font
-const fontNunito = `'Nunito', sans-serif`
-const fontInconsolata = `'Inconsolata', monospace`
-
-const newTheme = {
-}
-
-const oldTheme = {
-
-}
-
-const themes = { lightTheme, newTheme }
-select.names = Object.keys(themes)
-
-*/
-
-},{}],91:[function(require,module,exports){
-const bel = require("bel")
-const csjs = require("csjs-inject")
-const ethers = require('ethers')
-const glossary = require('glossary')
-const loadingAnimation = require('loadingAnimation')
-const makeDeployReceipt = require('makeDeployReceipt')
-const getArgs = require('getArgs')
-const makeReturn = require('makeReturn')
-const shortenHexData = require('shortenHexData')
 const inputAddress = require("input-address")
 const inputArray = require("input-array")
 const inputInteger = require("input-integer")
 const inputBoolean = require("input-boolean")
 const inputString = require("input-string")
 const inputByte = require("input-byte")
-const inputPayable = require("input-payable")
-const copy = require('copy-text-to-clipboard')
-
-const colors = require('theme')
-//const theme = require('theme')
-//const setTheme = require('setTheme')
-//setTheme(theme())
-
-// Styling variables
-
-var css
-var fonts = [ "https://use.fontawesome.com/releases/v5.8.2/css/all.css",
-  'https://fonts.googleapis.com/css?family=Overpass+Mono']
-var fontAwesome = bel`<link href=${fonts[0]} rel='stylesheet' type='text/css'>`
-var overpassMono = bel`<link href=${fonts[1]} rel='stylesheet' type='text/css'>`
-document.head.appendChild(fontAwesome)
-document.head.appendChild(overpassMono)
-
-/******************************************************************************
-  ETHERS
-******************************************************************************/
-
-window.ethers = ethers //@TODO remove after crosslink
-var provider
-var contract
-
-async function getProvider() {
-  if (window.web3 && window.web3.currentProvider) {
-    try {
-      // Acccounts now exposed
-      provider = new ethers.providers.Web3Provider(window.web3.currentProvider)
-      // Request account access if needed
-      await ethereum.enable();
-    } catch (error) {
-      console.log(error)
-    }
-  } else {
-    window.open("https://metamask.io/")
-  }
-  return provider
-}
-
-/*--------------------
-      PAGE
---------------------*/
-module.exports = {displayContractUI: displayContractUI}
-
-function displayContractUI(result) {   // compilation result metadata
-  var opts = {
-    metadata: {
-      compiler: { version: result[0].compiler.version },
-      language: result[0].compiler.language,
-      output: {
-        abi: result[0].abi,
-        devdoc: result[0].metadata.devdoc,
-        userdoc: result[0].metadata.userdoc
-      },
-      bytecode: result[0].binary.bytecodes.bytecode,
-      settings: {
-        compilationTarget: { '': result[0].sources.compilationTarget },
-        evmVersion: result[0].compiler.evmVersion,
-        libraries: result[0].sources.libraries,
-        optimizer: { enabled: result[0].compiler.optimizer, runs: result[0].compiler.runs },
-        remapings: result[0].sources.remappings
-      },
-      sources: { '': result[0].sources.sourcecode }
-    }
-}
-  if (!opts || !opts.metadata) {
-    return  bel`
-    <div class=${css.preview}>
-      <div class=${css.error}>
-        <div class=${css.errorTitle}>error <i class="${css.errorIcon} fa fa-exclamation-circle"></i></div>
-        ${opts}
-      </div>
-    </div>
-    `
-  }
-
-  if (!Array.isArray(opts.metadata)) {
-    var solcMetadata = opts.metadata
-    window.abi = solcMetadata.output.abi //@TODO remove after crosslink
-    window.bytecode = solcMetadata.bytecode //@TODO remove after crosslink
-    function getConstructorName() {
-      var file = Object.keys(solcMetadata.settings.compilationTarget)[0]
-      return solcMetadata.settings.compilationTarget[file]
-    }
-
-    function getConstructorInput() {
-      var payable = false
-      var inputs = solcMetadata.output.abi.map(fn => {
-        if (fn.type === "constructor") {
-          if (fn.stateMutability === 'payable') payable = true
-          return treeForm(fn.inputs)
-        }
-      })
-      if (payable === true) inputs.unshift(inputPayable('payable'))
-      return inputs
-    }
-
-    function getContractFunctions() {
-      return solcMetadata.output.abi.map(x => {
-        var obj = {}
-        obj.name = x.name
-        obj.type = x.type
-        obj.inputs = getAllInputs(x)
-        obj.outputs = getAllOutputs(x)
-        obj.stateMutability = x.stateMutability
-        return obj
-      })
-    }
-
-    function getAllInputs(fn) {
-      var inputs = []
-      if (fn.inputs) {
-        return treeForm(fn.inputs)
-      }
-    }
-
-    function getAllOutputs(fn) {
-      var outputs = []
-      if (fn.outputs) {
-        return treeForm(fn.outputs)
-      }
-    }
-
-    function treeForm(data) {
-      return data.map(x => {
-        if (x.components) {
-          return bel`<li><div>${x.name} (${x.type})</div><ul>${treeForm(x.components)}</ul></li>`
-        }
-        if (!x.components) {
-          return generateInputContainer(x)
-        }
-      })
-    }
-
-    var metadata = {
-      compiler: solcMetadata.compiler.version,
-      compilationTarget: solcMetadata.settings.compilationTarget,
-      constructorName: getConstructorName(),
-      constructorInput: getConstructorInput(),
-      functions: getContractFunctions()
-    }
-
-    function sort (functions) {
-      return functions.filter(x => x.type === 'function').sort((a, b) => {
-        var d=type2num(a) - type2num(b)
-        if (d==0) {
-          if (a.name > b.name) return 1;
-          if (a.name < b.name) return -1;
-        }
-        return d
-      })
-    }
-
-    function type2num ({ stateMutability: sm }) {
-      if (sm === 'view') return 1
-      if (sm === 'nonpayable') return 2
-      if (sm === 'pure') return 3
-      if (sm === 'payable') return 4
-      if (sm === undefined) return 5
-    }
-
-    var sorted = sort(metadata.functions)
+// const inputPayable = require("input-payable")
 
     function generateInputContainer (field) {
       var theme = { classes: css, colors}
@@ -20415,298 +19655,66 @@ function displayContractUI(result) {   // compilation result metadata
       return field
     }
 
-    function functions (fn) {
-      var label = fn.stateMutability
-      var fnName = bel`<a title="${glossary(label)}" class=${css.fnName}><div class=${css.name}>${fn.name}</div></a>`
-      var title = bel`<div class=${css.title} onclick=${e=>toggle(e, null, null)}>${fnName}</div>`
-      var send = bel`<div class=${css.send} onclick=${e => sendTx(fn.name, label, e)}><i class="${css.icon} fa fa-arrow-circle-right"></i></div>`
-      var functionClass = css[label]
-      var el = bel`
-      <div class=${css.fnContainer}>
-        <div class="${functionClass} ${css.function}">
-          ${title}
-          <ul class=${css.visible}>
-            ${fn.inputs}
-            ${send}
-          </ul>
-        </div>
-      </div>`
-      if (label === 'payable')  send.parentNode.prepend(inputPayable(label))
-      return el
+
+function treeForm(data) {
+  return data.map(x => {
+    if (x.components) {
+      return bel`<li><div>${x.name} (${x.type})</div><ul>${treeForm(x.components)}</ul></li>`
     }
-
-    async function sendTx (fnName, label, e) {
-      var loader = bel`<div class=${css.txReturnItem}>Awaiting network confirmation ${loadingAnimation(colors)}</div>`
-      var container = e.target.parentNode.parentNode.parentNode.parentNode
-      var txReturn = container.querySelector("[class^='txReturn']") || bel`<div class=${css.txReturn}></div>`
-      if (contract) {  // if deployed
-        container.appendChild(txReturn)
-        txReturn.appendChild(loader)
-        let signer = await provider.getSigner()
-        var allArgs = getArgs(container, 'inputContainer')
-        var args = allArgs.args
-        const contractType = contract.interface.functions[fnName].type
-        let opts = {
-          contract,
-          solcMetadata,
-          provider,
-          fnName
-        }
-        if (contractType === 'transaction') {
-          const callableTx = await makeContractCallable (contract, fnName, provider, args, allArgs)
-          opts.tx = callableTx
-          opts.typeTransaction = true
-          try {
-            let contractAsCurrentSigner = contract.connect(signer)
-            if (allArgs.overrides) { await contractAsCurrentSigner.functions[fnName](...args, allArgs.overrides) }
-            else { await contractAsCurrentSigner.functions[fnName](...args) }
-          } catch (e) { txReturn.children.length > 1 ? txReturn.removeChild(loader) : container.removeChild(txReturn) }
-        } else {
-          opts.typeTransaction = false
-          try {
-            let contractAsCurrentSigner = contract.connect(signer)
-            if (allArgs.overrides) { opts.tx = await contractAsCurrentSigner.functions[fnName](...args, allArgs.overrides) }
-            else { opts.tx = await contractAsCurrentSigner.functions[fnName](...args) }
-          } catch (e) { txReturn.children.length > 1 ? txReturn.removeChild(loader) : container.removeChild(txReturn) }
-        }
-        loader.replaceWith(await makeReturn(opts))
-      } else {
-        let deploy = document.querySelector("[class^='deploy']")
-        deploy.classList.add(css.bounce)
-        setTimeout(()=>deploy.classList.remove(css.bounce), 3500)
-      }
+    if (!x.components) {
+      return generateInputContainer(x)
     }
+  })
+}
 
-    async function executeTx (contract, fnName, provider, args, allArgs, opts) {
-      try {
-        let contractAsCurrentSigner = contract.connect(signer)
-        var tx
-        if (allArgs.overrides) { tx = await contractAsCurrentSigner.functions[fnName](...args, allArgs.overrides) }
-        else { tx = await contractAsCurrentSigner.functions[fnName](...args) }
-        loader.replaceWith(await makeReturn(opts))
-      } catch (e) { txReturn.children.length > 1 ? txReturn.removeChild(loader) : container.removeChild(txReturn) }
-    }
-
-    async function makeContractCallable (contract, fnName, provider, args, allArgs) {
-      const fn = contract.interface.functions[fnName]
-      if (fn.outputs.length > 0) {
-        const signature = fn.signature
-        const address = contract.address
-        const type = fn.outputs[0].type
-        let contractCallable = new ethers.Contract(address, [
-          `function ${signature} constant returns(${type})`
-        ], provider)
-        let signer = await provider.getSigner()
-        const callableAsCurrentSigner = await contractCallable.connect(signer)
-        try {
-          const callableFn =callableAsCurrentSigner.functions[fnName]
-          return await callableFn(...args)
-        } catch (e) { console.log(e) }
-      } else return []
-    }
-
-
-    function toggleAll (e) {
-      var fnContainer = e.currentTarget.parentElement.parentElement.children[2]
-      var constructorToggle = e.currentTarget.children[0]
-      var constructorIcon = constructorToggle.children[0]
-      constructorToggle.removeChild(constructorIcon)
-      var minus = bel`<i class="fa fa-minus-circle" title="Collapse">`
-      var plus = bel`<i class="fa fa-plus-circle title='Expand to see the details'">`
-      var icon = constructorIcon.className.includes('plus') ? minus : plus
-      constructorToggle.appendChild(icon)
-      for (var i = 0; i < fnContainer.children.length; i++) {
-        var fn = fnContainer.children[i]
-        var e = fn.children[0]
-        toggle(e, fn, constructorIcon)
-      }
-    }
-
-    function toggle (e, fun, constructorIcon) {
-      var fn
-      var toggleContainer
-      function removeLogs (el) {
-        var txReturn = el.parentNode.querySelectorAll("[class^='txReturn']")[0]
-        if (txReturn) {
-          txReturn.classList.remove(css.visible)
-          txReturn.classList.add(css.hidden)
-          txReturn.style.minHeight = 0
-        }
-      }
-      function addLogs (el) {
-        var txReturn = el.parentNode.querySelectorAll("[class^='txReturn']")[0]
-        if (txReturn) {
-          txReturn.classList.remove(css.hidden)
-          txReturn.classList.add(css.visible)
-          txReturn.style.minHeight = '80px'
-        }
-      }
-      // TOGGLE triggered by toggleAll
-      if (fun != null) {
-        fn = fun.children[0]
-        toggleContainer = e.children[1]
-        var fnInputs = fn.children[1]
-        // Makes sure all functions are opened or closed before toggleAll executes
-        if (constructorIcon.className.includes('plus') && fnInputs.className === css.visible.toString()) {
-          fnInputs.classList.remove(css.visible)
-          fnInputs.classList.add(css.hidden)
-          removeLogs(fn)
-        }
-        else if (constructorIcon.className.includes('minus') && fnInputs.className === css.hidden.toString()) {
-          fnInputs.classList.remove(css.hidden)
-          fnInputs.classList.add(css.visible)
-          addLogs(fn)
-        }
-      // TOGGLE triggered with onclick on function title (toggle single function)
-      } else {
-        fn = e.currentTarget.parentNode
-        toggleContainer = e.currentTarget.children[1]
-      }
-      // TOGGLE input fields in a function
-      var params = fn.children[1]
-      if (params.className === css.visible.toString()) {
-        params.classList.remove(css.visible)
-        params.classList.add(css.hidden)
-        removeLogs(fn)
-        fn.style.border = 'none'
-        fn.style.marginBottom = 0
-      } else {
-        params.classList.remove(css.hidden)
-        params.classList.add(css.visible)
-        addLogs(fn)
-        fn.style.border = `2px dashed ${colors.darkSmoke}`
-        fn.style.marginBottom = '2em'
-      }
-    }
-
-// Create and deploy contract using WEB3
-    async function deployContract() {
-      let abi = solcMetadata.output.abi
-      let bytecode = opts.metadata.bytecode
-      provider =  await getProvider()
-      let signer = await provider.getSigner()
-      var el = document.querySelector("[class^='ctor']")
-      let factory = await new ethers.ContractFactory(abi, bytecode, signer)
-      el.replaceWith(bel`<div class=${css.deploying}>Publishing to Ethereum network ${loadingAnimation(colors)}</div>`)
-      try {
-        var allArgs = getArgs(el, 'inputContainer')
-        let args = allArgs.args
-        var instance
-        if (allArgs.overrides) { instance = await factory.deploy(...args, allArgs.overrides) }
-        else { instance = await factory.deploy(...args) }
-        // instance = await factory.deploy(...args)
-        contract = instance
-        let deployed = await contract.deployed()
-        topContainer.innerHTML = ''
-        topContainer.appendChild(makeDeployReceipt(provider, contract, false))
-        activateSendTx(contract)
-      } catch (e) {
-        let loader = document.querySelector("[class^='deploying']")
-        loader.replaceWith(ctor)
-      }
-    }
-
-    function activateConnect (e) {
-      if (active != e.target) {
-        setToActive(e.target)
-        topContainer.removeChild(ctor)
-        topContainer.appendChild(connectContainer)
-      }
-    }
-
-    function activatePublish (e) {
-      if (active != e.target) {
-        setToActive(e.target)
-        topContainer.removeChild(connectContainer)
-        topContainer.appendChild(ctor)
-      }
-    }
-
-    async function connectToContract () {
-      let abi = solcMetadata.output.abi
-      let bytecode = opts.metadata.bytecode
-      provider =  await getProvider()
-      let signer = await provider.getSigner()
-      var el = document.querySelector("[class^='connectContainer']")
-      var allArgs = getArgs(el, 'inputContainer')
-      const address = allArgs.args[0]
-      el.replaceWith(bel`<div class=${css.connecting}>
-        Connecting to the contract ${address}
-        ${loadingAnimation(colors)}</div>`)
-      try {
-        contract = new ethers.Contract(address, abi, provider)
-        var code = await provider.getCode(address)
-        if (!code || code === '0x') {
-          let loader = document.querySelector("[class^='connecting']")
-          loader.replaceWith(connectContainer)
-          console.log('Not a valid contract address')
-        } else {
-          topContainer.innerHTML = ''
-          topContainer.appendChild(makeDeployReceipt(provider, contract, true))
-          activateSendTx(contract)
-        }
-      } catch (e) {
-        let loader = document.querySelector("[class^='connecting']")
-        loader.replaceWith(connectContainer)
-        console.log(e)
-      }
-    }
-
-    function setToActive (e) {
-      e.classList.add(css.activetab)
-      active.classList.remove(css.activetab)
-      active = e
-    }
-
-    function activateSendTx(instance) {
-      let sendButtons = document.querySelectorAll("[class^='send']")
-      for(var i = 0;i < sendButtons.length;i++) {
-        sendButtons[i].style.color = colors.slateGrey
-      }
-      for(var i = 0;i < sendButtons.length;i++) {
-        sendButtons[i].style.color = colors.whiteSmoke
-      }
-    }
-
-    var topContainer = bel`<div class=${css.topContainer}></div>`
-    var ctor = bel`<div class="${css.ctor}">
-      ${metadata.constructorInput}
-      <div class=${css.deploy} onclick=${()=>deployContract()}
-        title="Publish the contract first (this executes the Constructor function). After that you will be able to start sending/receiving data using the contract functions below.">
-        <div class=${css.deployTitle}>Publish</div>
-        <i class="${css.icon} fa fa-arrow-circle-right"></i>
-      </div>
-    </div>`
-    const connectContainer = bel`<div class="${css.connectContainer}">
-      ${generateInputContainer({name: 'contract_address', type:'address'})}
-      <div class=${css.connect} onclick=${()=>connectToContract()}
-        title="Enter address of the deployed contract you want to connect with. Select the correct network and click Connect. After that you will be able to interact with the chosen contract.">
-        <div class=${css.connectTitle}>Connect</div>
-        <i class="${css.icon} fa fa-arrow-circle-right"></i>
-      </div>
-    </div>`
-    var active, tabs = bel`<div class=${css.tabsContainer}>
-      ${active = bel`<div class="${css.tab} ${css.activetab}"
-      onclick=${e=>activatePublish(e)}>Publish</div>`}
-      <div class="${css.tab}"
-      onclick=${e=>activateConnect(e)}>Connect</div>
-    </div>`
-    topContainer.appendChild(tabs)
-    topContainer.appendChild(ctor)
-
-    return bel`
-    <div class=${css.preview}>
-      <div class=${css.constructorFn}>
-        <div class=${css.contractName} onclick=${e=>toggleAll(e)} title="Expand to see the details">
-          ${metadata.constructorName}
-          <span class=${css.icon}><i class="fa fa-minus-circle" title="Expand to see the details"></i></span>
-        </div>
-      </div>
-      ${topContainer}
-      <div class=${css.functions}>${sorted.map(fn => { return functions(fn)})}</div>
-    </div>`
+function getAllInputs(fn) {
+  if (fn.inputs) {
+    return treeForm(fn.inputs)
   }
 }
+
+function getAllOutputs(fn) {
+  if (fn.outputs) {
+    return treeForm(fn.outputs)
+  }
+}
+
+function getContractFunctions(solcMetadata) {
+  return solcMetadata.output.abi.map(x => {
+    var obj = {}
+    obj.name = x.name
+    obj.type = x.type
+    obj.inputs = getAllInputs(x)
+    obj.outputs = getAllOutputs(x)
+    obj.stateMutability = x.stateMutability
+    return obj
+  })
+}
+
+function getConstructorInput(solcMetadata) {
+  var payable = false
+  var inputs = solcMetadata.output.abi.map(fn => {
+    if (fn.type === "constructor") {
+      if (fn.stateMutability === 'payable') payable = true
+      return treeForm(fn.inputs)
+    }
+  })
+  if (payable === true) inputs.unshift(inputPayable('payable'))
+  return inputs
+}
+
+module.exports = {
+  treeForm: treeForm,
+  getInputField: getInputField,
+  generateInputContainer: generateInputContainer,
+  getContractFunctions: getContractFunctions,
+  getConstructorInput: getConstructorInput
+}
+
+},{"./css":80,"bel":3,"input-address":38,"input-array":39,"input-boolean":40,"input-byte":53,"input-integer":54,"input-string":55,"theme":91}],80:[function(require,module,exports){
+const csjs = require("csjs-inject")
+const colors = require('theme')
+const bel = require("bel")
 
 /******************************************************************************
   CSS
@@ -21164,5 +20172,1081 @@ function hover () {
   `
 }
 
-},{"bel":3,"copy-text-to-clipboard":8,"csjs-inject":11,"ethers":32,"getArgs":81,"glossary":83,"input-address":38,"input-array":39,"input-boolean":40,"input-byte":53,"input-integer":54,"input-payable":84,"input-string":55,"loadingAnimation":85,"makeDeployReceipt":86,"makeReturn":87,"shortenHexData":89,"theme":90}]},{},[91])(91)
+function injectHeadStyles() {
+  var fonts = [ "https://use.fontawesome.com/releases/v5.8.2/css/all.css",
+  'https://fonts.googleapis.com/css?family=Overpass+Mono']
+  var fontAwesome = bel`<link href=${fonts[0]} rel='stylesheet' type='text/css'>`
+  var overpassMono = bel`<link href=${fonts[1]} rel='stylesheet' type='text/css'>`
+  document.head.appendChild(fontAwesome)
+  document.head.appendChild(overpassMono)
+}
+
+module.exports = {
+  css: css,
+  inputStyle: inputStyle,
+  hover: hover,
+  injectHeadStyles: injectHeadStyles
+}
+},{"bel":3,"csjs-inject":11,"theme":91}],81:[function(require,module,exports){
+const ethers = require('ethers')
+const bigNumber = require('bignumber.js')
+
+module.exports = convertToEther
+
+function convertToEther (currency, amount) {
+  var amount = getAmount(currency, amount)
+  amount = ethers.utils.formatEther(amount)
+  return ethers.utils.parseEther(amount)
+}
+
+function formatAmount (exponent, amount) {
+  var base = new bigNumber(1000)
+  return base.exponentiatedBy(exponent).multipliedBy(amount).toFormat().split(',').join('')
+}
+
+function getAmount (currency, amount) {
+  var base = new bigNumber(1000)
+  if (currency === 't-ether') return formatAmount(10, amount)
+  if (currency === 'g-ether') return formatAmount(9, amount)
+  if (currency === 'm-ether') return formatAmount(8, amount)
+  if (currency === 'k-ether') return formatAmount(7, amount)
+  if (currency === 'ether')   return formatAmount(6, amount)
+  if (currency === 'milli')   return formatAmount(5, amount)
+  if (currency === 'micro')   return formatAmount(4, amount)
+  if (currency === 'g-wei')   return formatAmount(3, amount)
+  if (currency === 'm-wei')   return formatAmount(2, amount)
+  if (currency === 'k-wei')   return formatAmount(1, amount)
+  if (currency === 'wei')     return amount
+}
+
+},{"bignumber.js":4,"ethers":32}],82:[function(require,module,exports){
+const ethers = require('ethers')
+
+module.exports = decodeReturnData
+
+function decodeReturnData (txReturn, txTypes) {
+  var result
+  if (Array.isArray(txReturn)) {  // recursive case
+    result = txReturn.map((x, i) => decodeReturnData(x, getTypes(txTypes, i)))
+    return result
+  } else { // atomic case
+    result = decode(txReturn, getTypes(txTypes, 0))
+    return result
+  }
+}
+
+function decode (txReturn, txType) {
+  var type = txType.type
+  if (type.includes('int')) return txReturn.toString()
+  else return txReturn
+}
+
+function getTypes(types, i) {
+  if (types.components) types = types.components
+  else if (Array.isArray(types)) {
+    if (types[i].type) types = types[i]
+  }
+  else types = types
+  return types
+}
+
+},{"ethers":32}],83:[function(require,module,exports){
+const bigNumber = require('bignumber.js')
+const ethers = require('ethers')
+const convertToEther = require('convertToEther')
+
+module.exports = getArgs
+
+function getArgs( element, selector ) {
+  var args = []
+  var overrides = {}
+  var fields = element.querySelectorAll(`[class^=${selector}]`)
+  for (var i=0; i<fields.length; i++) {
+    var x = fields[i]
+    let title = x.children[0].title
+     /* -----------------------------------------
+                       PAYABLE
+    --------------------------------------------*/
+    if (title.includes('payable')) {
+      var inputs = x.querySelector("[class^='inputArea']").children
+      var amount = inputs[0].value
+      var currency = inputs[1].value
+      // The amount to send with the transaction (i.e. msg.value)
+      overrides.gasLimit = 3000000
+      overrides.value = convertToEther(currency, amount)
+      /* -----------------------------------------
+                    NOT PAYABLE
+     --------------------------------------------*/
+    } else {
+      // ------------ ARRAY ---------------------
+      if (title.includes('[')) {
+        var argumentsInArr = []
+        // ARRAY of BOOL
+        if (title.includes('bool')) {
+        let inputs = x.querySelectorAll("[class^='booleanField']")
+        inputs.forEach(y => {
+          argumentsInArr.push(getBool(y))
+        })
+      }
+      // ARRAY of INT/UINT
+      else if (title.includes('int')) {
+        let inputs = x.querySelectorAll("[class^='integerValue']")
+        inputs.forEach(y => {
+          argumentsInArr.push(getArgument(y, y.value))
+        })
+      }
+      // ARRAY of BYTES
+      else if (title.includes('byte')) {
+        let inputs = x.querySelectorAll("[class^='byteField']")
+        inputs.forEach(y => {
+          let el = y.querySelector('input')
+          argumentsInArr.push(getByte(el))
+        })
+      } else {
+        // ARRAY of OTHER TYPES
+        var inputs = x.querySelectorAll('input')
+        inputs.forEach(z => {
+          let el = z
+          let val = z.value
+          argumentsInArr.push(getArgument(el, val))
+        })
+      }
+      args.push(argumentsInArr)
+      }
+      // ------------ NOT ARRAY ---------------------
+      // BOOLEAN
+      else if (title.includes('bool')) {
+        var boolField = x.querySelector("[class^='booleanField']")
+        args.push(getBool(boolField))
+      }
+      // BYTE
+      else if (title.includes('byte')) {
+        var el = x.querySelector('input')
+        args.push(getByte(el))
+      }
+      else {
+      // OTHER TYPES
+        let el = title.includes('int') ? x.querySelectorAll('input')[1] : x.querySelector('input')
+        let val = el.value
+        args.push(getArgument(el, val))
+      }
+    }
+
+  }
+  return {args, overrides}
+}
+
+function getByte (el) {
+  return el.value
+}
+
+function getBool (boolField) {
+  var val
+  let falseField = boolField.children[0]
+  let trueField = boolField.children[1]
+  if (falseField.dataset.state === "active") val = false
+  else if (trueField.dataset.state === "active") val = true
+  return val
+}
+
+function getArgument(el, val) {
+  var argument
+  if ((el.dataset.type.search(/\buint/) != -1) || (el.dataset.type.search(/\bint/) != -1) || (el.dataset.type.search(/\bfixed/) != -1)) {
+    if (val > Number.MAX_SAFE_INTEGER) {
+      let number = bigNumber(Number(val)).toFixed(0)
+      argument = ethers.utils.bigNumberify(number.toString())
+    } else {
+      argument = Number(val)
+    }
+  }
+  if (el.dataset.type.search(/\bbyte/) != -1) {
+    argument = ethers.utils.formatBytes32String(val)
+  }
+  if (el.dataset.type.search(/\bstring/) != -1) argument = val
+  if (el.dataset.type.search(/\baddress/) != -1) argument = val
+  return argument
+}
+
+},{"bignumber.js":4,"convertToEther":81,"ethers":32}],84:[function(require,module,exports){
+module.exports = getDate
+
+function getDate () {
+  var today = new Date();
+  // var dd = today.getDate();
+  // var mm = today.getMonth() + 1; //January is 0!
+  // var yyyy = today.getFullYear();
+  //
+  // if (dd < 10) {
+  //   dd = '0' + dd;
+  // }
+  //
+  // if (mm < 10) {
+  //   mm = '0' + mm;
+  // }
+  //
+  // today = mm + '/' + dd + '/' + yyyy;
+
+  return `${today}`.split('(')[0]
+
+}
+
+},{}],85:[function(require,module,exports){
+module.exports = word => glossary[word]
+
+var glossary = {
+  pure: `This function is a PURE FUNCTION, which doesn't modify nor read the state. This type of function is free (costs no gas)).`,
+  view: `This function is a VIEW FUNCTION (a call), which returns information from the Ethereum network and costs no gas (it's free).`,
+  payable: `This function is a PAYABLE FUNCTION, which enables to send ETH while being called. This type of function will cost you gas (execution fee).`,
+  nonpayable: `This function is a NONPAYABLE FUNCTION, which changes the state of the contract on the Ethereum network and it will cost you some gas (execution fee).`,
+  undefined: `Type of this function is not defined.`
+}
+
+},{}],86:[function(require,module,exports){
+const bel = require("bel")
+const colors = require('theme')
+const csjs = require("csjs-inject")
+const ethers = require('ethers')
+var css
+
+module.exports = inputPayable
+
+function inputPayable (label) {
+
+  return bel`
+    <div class=${css.inputContainer}>
+      <div class=${css.title} title="data type: ${label}">value</div>
+      <div class=${css.inputArea}>
+        <input class=${css.input} placeholder="999" oninput=${validate}>
+        ${currencySelector()}
+      </div>
+      <div class=${css.ethIcon} title="Select amount you want to send with this function!"><i class="fab fa-ethereum"></i></div>
+    </div>`
+}
+
+  function validate (e) {
+    // @TODO
+  }
+
+function currencySelector () {
+  var button = bel`
+    <select class=${css.currency}>
+      <option value="wei">wei</option>
+      <option value="k-wei">k-wei</option>
+      <option value="m-wei">m-wei</option>
+      <option value="g-wei">g-wei</option>
+      <option value="micro">micro</option>
+      <option value="milli">milli</option>
+      <option value="ether">ether</option>
+      <option value="k-ether">k-ether</option>
+      <option value="m-ether">m-ether</option>
+      <option value="g-ether">g-ether</option>
+      <option value="t-ether">t-ether</option>
+    </select>`
+  return button
+}
+
+css = csjs`
+.inputContainer {
+  display: flex;
+  align-items: center;
+  margin: 15px 0 15px 0;
+}
+.title {
+  justify-content: center;
+  color: ${colors.slateGrey};
+  font-size: 0.9rem;
+  display: flex;
+  min-width: 200px;
+}
+.inputArea {
+  display: flex;
+  align-items: center;
+  max-width: 300px;
+}
+.input {
+  width: 194px;
+  background-color: ${colors.darkSmoke};
+  border-radius: 0.2em;
+  color: ${colors.whiteSmoke};
+  border: 1px solid ${colors.slateGrey};
+  text-align: center;
+  font-size: 0.9rem;
+  padding: 5px;
+  margin-right: 5px;
+}
+.currency {
+  width: 88px;
+  border-radius: 0.2em;
+  border: 1px solid ${colors.slateGrey};
+  padding: 5px 7px;
+  color: ${colors.slateGrey};
+  background-color: ${colors.darkSmoke};
+}
+.ethIcon {
+  color: ${colors.orange};
+  font-size: 1.2rem;
+  display: flex;
+  align-self: center;
+  padding-left: 10px;
+}
+`
+
+},{"bel":3,"csjs-inject":11,"ethers":32,"theme":91}],87:[function(require,module,exports){
+const bel = require("bel")
+const csjs = require("csjs-inject")
+
+module.exports = loadingAnimation
+
+function loadingAnimation (colors) {
+  const css = csjs`
+  .loader:before {
+    content: "";
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    top: 45%;
+    left: 78%;
+    background-color: ${colors.whiteSmoke};
+    animation: rotatemove 1.5s infinite;
+    border-radius: 50%;
+  }
+
+  @keyframes rotatemove {
+    0%{
+      -webkit-transform: scale(1) translateX(0px);
+      -ms-transform: scale(1) translateX(0px);
+      -o-transform: scale(1) translateX(0px);
+      transform: scale(1) translateX(0px);
+    }
+
+    100%{
+      -webkit-transform: scale(2) translateX(45px);
+      -ms-transform: scale(2) translateX(45px);
+      -o-transform: scale(2) translateX(45px);
+      transform: scale(2) translateX(45px);
+    }
+  }`
+  // @TODO: fix theming to not create 10000 style tags for 1000 spinners
+  return bel`<div class=${css.loader}></div>`
+}
+
+},{"bel":3,"csjs-inject":11}],88:[function(require,module,exports){
+const bel = require("bel")
+const csjs = require('csjs-inject')
+const colors = require('theme')
+const date = require('getDate')
+const copy = require('copy-text-to-clipboard')
+const moreInfo = require('moreInfo')
+
+module.exports = makeDeployReceipt
+
+var css = csjs`
+.txReceipt {
+  display:flex;
+  justify-content: flex-start;
+  flex-direction: column;
+  margin-left: 1em;
+}
+.txReturnField {
+  display:flex;
+  justify-content: flex-start;
+  flex-direction: column;
+  margin-bottom: 2%;
+}
+.txReturnTitle {
+  color: ${colors.lightGrey};
+  margin-right: 5px;
+  width: 50%;
+}
+.txReturnValue {
+  color: ${colors.slateGrey};
+  cursor: pointer;
+  word-break: break-all;
+}
+.txReturnValue:hover {
+  cursor: pointer;
+  opacity: 0.6;
+}
+.date {}
+`
+
+function makeDeployReceipt (provider, contract, connected) {
+  var el
+  if (!connected) {
+    return bel`
+    <div class=${css.txReceipt}>
+      <div class=${css.txReturnField}>
+        <div class=${css.txReturnTitle}>published</div>
+        <div class=${css.txReturnValue}>${date()}</div>
+      </div>
+      <div class=${css.txReturnField}
+        title="${contract.deployTransaction.creates}"
+        onclick=${()=>copy(contract.deployTransaction.creates)}>
+        <div class=${css.txReturnTitle}>contract address (${provider._network.name}):</div>
+        <div class=${css.txReturnValue}>${contract.deployTransaction.creates}</div>
+      </div>
+      <div class=${css.txReturnField} title="${contract.deployTransaction.from}"
+        onclick=${()=>copy(contract.deployTransaction.from)}>
+        <div class=${css.txReturnTitle}>published by</div>
+        <div class=${css.txReturnValue}>${contract.deployTransaction.from}</div>
+      </div>
+      ${moreInfo(provider._network.name, contract.deployTransaction.hash)}
+    </div>`
+  } else if (connected) {
+    return bel`
+    <div class=${css.txReceipt}>
+      <div class=${css.txReturnField}
+        onclick=${()=>copy(contract.address)}>
+        <div class=${css.txReturnTitle}>connected to contract:</div>
+        <div class=${css.txReturnValue}>${contract.address}</div>
+      </div>
+    </div>`
+  }
+}
+
+},{"bel":3,"copy-text-to-clipboard":8,"csjs-inject":11,"getDate":84,"moreInfo":90,"theme":91}],89:[function(require,module,exports){
+const bel = require("bel")
+const moreInfo = require('moreInfo')
+const csjs = require('csjs-inject')
+const colors = require('theme')
+const decodeReturnData = require('decodeReturnData')
+
+module.exports = makeReturn
+
+async function makeReturn (opts) {
+//async function makeReturn (contract, solcMetadata, provider, tx, fnName) {
+  var el = bel`<div class=${css.txReturnItem}></div>`
+  const data = getReturnData(opts)
+  el.appendChild(makeTxReturn(css, data))
+  return el
+}
+
+function getReturnData (opts) {
+  var iface = new ethers.utils.Interface(opts.solcMetadata.output.abi)
+  var fun = opts.contract.interface.functions[opts.fnName]
+  return decodeReturnData(opts.tx, fun.outputs)
+}
+
+function makeTxReturn (css, data) {
+  return bel`
+    <div class=${css.txReceipt}>
+        <div class=${css.txReturnField}>
+          <div class=${css.txReturnValue}>${JSON.stringify(data, null, 2)}</div>
+        </div>
+    </div>`
+}
+
+var css = csjs`
+.txReturnItem {
+  position: relative;
+  font-size: 0.7rem;
+  display: flex;
+  color: ${colors.whiteSmoke};
+  border: 1px solid ${colors.darkSmoke};
+  width: 87%;
+  margin: 3%;
+  padding: 3%;
+  justify-content: space-between;
+  flex-direction: column;
+}
+.txReceipt {
+  display:flex;
+  justify-content: flex-start;
+  flex-direction: column;
+}
+.txReturnField {
+  display:flex;
+  justify-content: flex-start;
+  flex-direction: column;
+  margin-bottom: 1%;
+}
+.txReturnValue {
+  color: ${colors.slateGrey};
+  cursor: pointer;
+  word-break: break-all;
+}
+.txReturnValue:hover {
+  cursor: pointer;
+  opacity: 0.6;
+}`
+
+},{"bel":3,"csjs-inject":11,"decodeReturnData":82,"moreInfo":90,"theme":91}],90:[function(require,module,exports){
+const colors = require('theme')
+const bel = require('bel')
+const csjs = require('csjs-inject')
+
+module.exports = moreInfo
+
+var css = csjs`
+  .infoIcon {
+    position: absolute;
+    right: 5px;
+    bottom: 0px;
+    color: ${colors.slateGrey};
+  }
+  .infoIcon a {
+    font-size: 1.3em;
+    text-decoration: none;
+    color: ${colors.whiteSmoke};
+  }
+  .infoIcon a:hover {
+    opacity: 0.6;
+  }
+`
+
+function moreInfo (network, txHash) {
+  var linkToExplorer =
+  "https://" + network  + ".etherscan.io/tx/" + txHash
+  return bel`<div class=${css.infoIcon}
+    title="Take me to the block explorer">
+      <a href=${linkToExplorer}
+        target="_blank"><i class="fa fa-info-circle"></i>
+      </a>
+    </div>`
+}
+
+},{"bel":3,"csjs-inject":11,"theme":91}],91:[function(require,module,exports){
+module.exports = theme()
+
+function theme () {
+  var colors = {
+    transparent: "transparent",
+    white: "#ffffff", // borders, font on input background
+    dark: "#2c323c", //background dark
+    darkSmoke: '#21252b',  // separators
+    whiteSmoke: "#dcd7d7", // background light
+    slateGrey: "#8a929b", // text
+    lightGrey: "#F1F2EB",
+    orange: "#ffc459", // used as false in bool
+    violetRed: "#fd547d",  // fail
+    aquaMarine: "#90FCF9",  // used as true in bool
+    turquoise: "#14b9d5",
+    yellow: "#F2CD5D",
+    lavender: "#db94ff",
+    androidGreen: "#9BC53D" // success
+  }
+  return colors
+}
+
+
+/*
+module.exports = select
+
+function select (theme = 'oldTheme') {
+  return themes[theme]
+}
+
+// define colors
+const bluePurple = '#6700ff'
+const lightGreen = '#09FFC3'
+const lightGreenHover = '#A1FFE8'
+const greyEB = '#EBEBEB'
+const grey8D = '#8D8D8D'
+const grey31 = '#313136'
+const grey33 = '#333333'
+const greyBB = '#BBBBBB'
+const white = '#ffffff'
+const dark18 = '#181920'
+const dark1d = '#1d1d26'
+const peach = 'rgba(255, 41,117, 100)'
+const transparent = 'rgba(0,0,0,0)'
+
+// define font
+const fontNunito = `'Nunito', sans-serif`
+const fontInconsolata = `'Inconsolata', monospace`
+
+const newTheme = {
+}
+
+const oldTheme = {
+
+}
+
+const themes = { lightTheme, newTheme }
+select.names = Object.keys(themes)
+
+*/
+
+},{}],92:[function(require,module,exports){
+const bel = require("bel")
+const ethers = require('ethers')
+const glossary = require('glossary')
+const loadingAnimation = require('loadingAnimation')
+const makeDeployReceipt = require('makeDeployReceipt')
+const getArgs = require('getArgs')
+const makeReturn = require('makeReturn')
+const inputPayable = require("input-payable")
+
+const { 
+  css,
+  injectHeadStyles
+} = require('./css');
+const {
+  generateInputContainer,
+  getContractFunctions,
+  getConstructorInput
+} = require('./components');
+const colors = require('theme')
+//const theme = require('theme')
+//const setTheme = require('setTheme')
+//setTheme(theme())
+
+injectHeadStyles();
+/******************************************************************************
+  ETHERS
+******************************************************************************/
+
+window.ethers = ethers //@TODO remove after crosslink
+var provider
+var contract
+
+async function getProvider() {
+  if (window.web3 && window.web3.currentProvider) {
+    try {
+      // Acccounts now exposed
+      provider = new ethers.providers.Web3Provider(window.web3.currentProvider)
+      // Request account access if needed
+      await ethereum.enable();
+    } catch (error) {
+      console.log(error)
+    }
+  } else {
+    window.open("https://metamask.io/")
+  }
+  return provider
+}
+
+// Helpers
+function getConstructorName(solcMetadata) {
+  if (solcMetadata.name) return solcMetadata.name;
+  var file = Object.keys(solcMetadata.settings.compilationTarget)[0]
+  return solcMetadata.settings.compilationTarget[file]
+}
+/*--------------------
+      PAGE
+--------------------*/
+module.exports = displayContractUI;
+// needed for greasy react hack
+window.displayContractUI = displayContractUI;
+
+function displayContractUI(result) {
+  // in case of address bound contracts, do not allow deploys
+  if (result[0].name && result[0].address) {
+    return modularDisplayContractUI(result);
+  } else {
+    return displayContractUIFull(result);
+  }
+}
+
+function modularDisplayContractUI(result) {
+  var opts = {
+    metadata: {
+      compiler: { },
+      name: result[0].name,
+      address: result[0].address,
+      language: null,
+      output: {
+        abi: result[0].abi
+      },
+      bytecode: null,
+      settings: {},
+      sources: { }
+    }
+  }
+  var solcMetadata = opts.metadata
+  var metadata = {
+    compiler: null,
+    compilationTarget: null,
+    constructorName: solcMetadata.name,
+    constructorInput: null,
+    functions: getContractFunctions(solcMetadata),
+    address: solcMetadata.address,
+    bytecode: solcMetadata.bytecode,
+    abi: solcMetadata.output.abi
+  }
+  return _displayContractUI(metadata);
+}
+
+function displayContractUIFull(result) {
+  var opts = {
+    metadata: {
+      compiler: { version: result[0].compiler.version },
+      language: result[0].compiler.language,
+      address: result[0].address,
+      output: {
+        abi: result[0].abi,
+        devdoc: result[0].metadata.devdoc,
+        userdoc: result[0].metadata.userdoc
+      },
+      bytecode: result[0].binary.bytecodes.bytecode,
+      settings: {
+        compilationTarget: { '': result[0].sources.compilationTarget },
+        evmVersion: result[0].compiler.evmVersion,
+        libraries: result[0].sources.libraries,
+        optimizer: { enabled: result[0].compiler.optimizer, runs: result[0].compiler.runs },
+        remapings: result[0].sources.remappings
+      },
+      sources: { '': result[0].sources.sourcecode }
+    }
+  }
+  var solcMetadata = opts.metadata
+  var metadata = {
+    compiler: solcMetadata.compiler.version,
+    compilationTarget: solcMetadata.settings.compilationTarget,
+    constructorName: getConstructorName(solcMetadata),
+    constructorInput: getConstructorInput(solcMetadata),
+    functions: getContractFunctions(solcMetadata),
+    address: solcMetadata.address,
+    bytecode: solcMetadata.bytecode,
+    abi: solcMetadata.output.abi
+  }
+
+  return _displayContractUI(metadata);
+}
+
+function _displayContractUI(metadata) {   // compilation result metadata
+
+  if (!metadata) {
+    return  bel`
+    <div class=${css.preview}>
+      <div class=${css.error}>
+        <div class=${css.errorTitle}>error <i class="${css.errorIcon} fa fa-exclamation-circle"></i></div>
+        ${opts}
+      </div>
+    </div>
+    `
+  }
+
+  if (!Array.isArray(metadata)) {
+    //@TODO remove after crosslink
+    window.abi = metadata.abi;
+    window.bytecode = metadata.bytecode;
+
+    function sort (functions) {
+      return functions.filter(x => x.type === 'function').sort((a, b) => {
+        var d=type2num(a) - type2num(b)
+        if (d==0) {
+          if (a.name > b.name) return 1;
+          if (a.name < b.name) return -1;
+        }
+        return d
+      })
+    }
+
+    function type2num ({ stateMutability: sm }) {
+      if (sm === 'view') return 1
+      if (sm === 'nonpayable') return 2
+      if (sm === 'pure') return 3
+      if (sm === 'payable') return 4
+      if (sm === undefined) return 5
+    }
+
+    var sorted = sort(metadata.functions)
+
+    function functions (fn) {
+      var label = fn.stateMutability
+      var fnName = bel`<a title="${glossary(label)}" class=${css.fnName}><div class=${css.name}>${fn.name}</div></a>`
+      var title = bel`<div class=${css.title} onclick=${e=>toggle(e, null, null)}>${fnName}</div>`
+      var send = bel`<div class=${css.send} onclick=${e => sendTx(fn.name, label, e)}><i class="${css.icon} fa fa-arrow-circle-right"></i></div>`
+      var functionClass = css[label]
+      var el = bel`
+      <div class=${css.fnContainer}>
+        <div class="${functionClass} ${css.function}">
+          ${title}
+          <ul class=${css.visible}>
+            ${fn.inputs}
+            ${send}
+          </ul>
+        </div>
+      </div>`
+      if (label === 'payable')  send.parentNode.prepend(inputPayable(label))
+      return el
+    }
+
+    async function sendTx (fnName, label, e) {
+      var loader = bel`<div class=${css.txReturnItem}>Awaiting network confirmation ${loadingAnimation(colors)}</div>`
+      var container = e.target.parentNode.parentNode.parentNode.parentNode
+      var txReturn = container.querySelector("[class^='txReturn']") || bel`<div class=${css.txReturn}></div>`
+      if (contract) {  // if deployed
+        container.appendChild(txReturn)
+        txReturn.appendChild(loader)
+        let signer = await provider.getSigner()
+        var allArgs = getArgs(container, 'inputContainer')
+        var args = allArgs.args
+        const contractType = contract.interface.functions[fnName].type
+        let opts = {
+          contract,
+          metadata,
+          provider,
+          fnName
+        }
+        if (contractType === 'transaction') {
+          const callableTx = await makeContractCallable (contract, fnName, provider, args, allArgs)
+          opts.tx = callableTx
+          opts.typeTransaction = true
+          try {
+            let contractAsCurrentSigner = contract.connect(signer)
+            if (allArgs.overrides) { await contractAsCurrentSigner.functions[fnName](...args, allArgs.overrides) }
+            else { await contractAsCurrentSigner.functions[fnName](...args) }
+          } catch (e) { txReturn.children.length > 1 ? txReturn.removeChild(loader) : container.removeChild(txReturn) }
+        } else {
+          opts.typeTransaction = false
+          try {
+            let contractAsCurrentSigner = contract.connect(signer)
+            if (allArgs.overrides) { opts.tx = await contractAsCurrentSigner.functions[fnName](...args, allArgs.overrides) }
+            else { opts.tx = await contractAsCurrentSigner.functions[fnName](...args) }
+          } catch (e) { txReturn.children.length > 1 ? txReturn.removeChild(loader) : container.removeChild(txReturn) }
+        }
+        loader.replaceWith(await makeReturn(opts))
+      } else {
+        let deploy = document.querySelector("[class^='deploy']")
+        deploy.classList.add(css.bounce)
+        setTimeout(()=>deploy.classList.remove(css.bounce), 3500)
+      }
+    }
+
+    async function makeContractCallable (contract, fnName, provider, args, allArgs) {
+      const fn = contract.interface.functions[fnName]
+      if (fn.outputs.length > 0) {
+        const signature = fn.signature
+        const address = contract.address
+        const type = fn.outputs[0].type
+        let contractCallable = new ethers.Contract(address, [
+          `function ${signature} constant returns(${type})`
+        ], provider)
+        let signer = await provider.getSigner()
+        const callableAsCurrentSigner = await contractCallable.connect(signer)
+        try {
+          const callableFn =callableAsCurrentSigner.functions[fnName]
+          return await callableFn(...args)
+        } catch (e) { console.log(e) }
+      } else return []
+    }
+
+    function toggleAll (e) {
+      var fnContainer = e.currentTarget.parentElement.parentElement.children[2]
+      var constructorToggle = e.currentTarget.children[0]
+      var constructorIcon = constructorToggle.children[0]
+      constructorToggle.removeChild(constructorIcon)
+      var minus = bel`<i class="fa fa-minus-circle" title="Collapse">`
+      var plus = bel`<i class="fa fa-plus-circle title='Expand to see the details'">`
+      var icon = constructorIcon.className.includes('plus') ? minus : plus
+      constructorToggle.appendChild(icon)
+      for (var i = 0; i < fnContainer.children.length; i++) {
+        var fn = fnContainer.children[i]
+        var e = fn.children[0]
+        toggle(e, fn, constructorIcon)
+      }
+    }
+
+    function toggle (e, fun, constructorIcon) {
+      var fn
+      var toggleContainer
+      function removeLogs (el) {
+        var txReturn = el.parentNode.querySelectorAll("[class^='txReturn']")[0]
+        if (txReturn) {
+          txReturn.classList.remove(css.visible)
+          txReturn.classList.add(css.hidden)
+          txReturn.style.minHeight = 0
+        }
+      }
+      function addLogs (el) {
+        var txReturn = el.parentNode.querySelectorAll("[class^='txReturn']")[0]
+        if (txReturn) {
+          txReturn.classList.remove(css.hidden)
+          txReturn.classList.add(css.visible)
+          txReturn.style.minHeight = '80px'
+        }
+      }
+      // TOGGLE triggered by toggleAll
+      if (fun != null) {
+        fn = fun.children[0]
+        toggleContainer = e.children[1]
+        var fnInputs = fn.children[1]
+        // Makes sure all functions are opened or closed before toggleAll executes
+        if (constructorIcon.className.includes('plus') && fnInputs.className === css.visible.toString()) {
+          fnInputs.classList.remove(css.visible)
+          fnInputs.classList.add(css.hidden)
+          removeLogs(fn)
+        }
+        else if (constructorIcon.className.includes('minus') && fnInputs.className === css.hidden.toString()) {
+          fnInputs.classList.remove(css.hidden)
+          fnInputs.classList.add(css.visible)
+          addLogs(fn)
+        }
+      // TOGGLE triggered with onclick on function title (toggle single function)
+      } else {
+        fn = e.currentTarget.parentNode
+        toggleContainer = e.currentTarget.children[1]
+      }
+      // TOGGLE input fields in a function
+      var params = fn.children[1]
+      if (params.className === css.visible.toString()) {
+        params.classList.remove(css.visible)
+        params.classList.add(css.hidden)
+        removeLogs(fn)
+        fn.style.border = 'none'
+        fn.style.marginBottom = 0
+      } else {
+        params.classList.remove(css.hidden)
+        params.classList.add(css.visible)
+        addLogs(fn)
+        fn.style.border = `2px dashed ${colors.darkSmoke}`
+        fn.style.marginBottom = '2em'
+      }
+    }
+
+// Create and deploy contract using WEB3
+    async function deployContract() {
+      let abi = metadata.abi
+      let bytecode = metadata.bytecode
+      provider =  await getProvider()
+      let signer = await provider.getSigner()
+      var el = document.querySelector("[class^='ctor']")
+      let factory = await new ethers.ContractFactory(abi, bytecode, signer)
+      el.replaceWith(bel`<div class=${css.deploying}>Publishing to Ethereum network ${loadingAnimation(colors)}</div>`)
+      try {
+        var allArgs = getArgs(el, 'inputContainer')
+        let args = allArgs.args
+        var instance
+        if (allArgs.overrides) { instance = await factory.deploy(...args, allArgs.overrides) }
+        else { instance = await factory.deploy(...args) }
+        // instance = await factory.deploy(...args)
+        contract = instance
+        let deployed = await contract.deployed()
+        topContainer.innerHTML = ''
+        topContainer.appendChild(makeDeployReceipt(provider, contract, false))
+        activateSendTx(contract)
+      } catch (e) {
+        let loader = document.querySelector("[class^='deploying']")
+        loader.replaceWith(ctor)
+      }
+    }
+
+    function activateConnect (e) {
+      console.log(e)
+      if (active != e.target) {
+        setToActive(e.target)
+        topContainer.removeChild(ctor)
+        topContainer.appendChild(connectContainer)
+      }
+    }
+
+    function activatePublish (e) {
+      if (active != e.target) {
+        setToActive(e.target)
+        topContainer.removeChild(connectContainer)
+        topContainer.appendChild(ctor)
+      }
+    }
+
+    async function connectToContract() {
+      var el = document.querySelector("[class^='connectContainer']")
+      var allArgs = getArgs(el, 'inputContainer')
+      const address = allArgs.args[0]
+      await _connectToContract(address);
+    }
+
+    async function _connectToContract (address, tries=0) {
+      var el = document.querySelector("[class^='connectContainer']")
+      let abi = metadata.abi
+      provider =  await getProvider()
+      el.replaceWith(bel`<div class=${css.connecting}>
+        Connecting to the contract ${address}
+        ${loadingAnimation(colors)}</div>`)
+      try {
+        contract = new ethers.Contract(address, abi, provider)
+        var code = await provider.getCode(address)
+        if (!code || code === '0x') {
+          let loader = document.querySelector("[class^='connecting']")
+          loader.replaceWith(connectContainer)
+          console.log('Not a valid contract address')
+        } else {
+          topContainer.innerHTML = ''
+          topContainer.appendChild(makeDeployReceipt(provider, contract, true))
+          activateSendTx(contract)
+        }
+      } catch (e) {
+        let loader = document.querySelector("[class^='connecting']")
+        loader.replaceWith(connectContainer)
+        console.log(e)
+        if (tries==0) {
+          return _connectToContract(address,1);
+        } else {
+          alert("Failed to connect to contract. Please try manually");
+        }
+      }
+    }
+
+    function setToActive (e) {
+      e.classList.add(css.activetab)
+      active.classList.remove(css.activetab)
+      active = e
+    }
+
+    function activateSendTx(instance) {
+      let sendButtons = document.querySelectorAll("[class^='send']")
+      for(var i = 0;i < sendButtons.length;i++) {
+        sendButtons[i].style.color = colors.slateGrey
+      }
+      for(var i = 0;i < sendButtons.length;i++) {
+        sendButtons[i].style.color = colors.whiteSmoke
+      }
+    }
+
+    var topContainer = bel`<div class=${css.topContainer}></div>`
+    var ctor = bel`<div class="${css.ctor}">
+      ${metadata.constructorInput}
+      <div class=${css.deploy} onclick=${()=>deployContract()}
+        title="Publish the contract first (this executes the Constructor function). After that you will be able to start sending/receiving data using the contract functions below.">
+        <div class=${css.deployTitle}>Publish</div>
+        <i class="${css.icon} fa fa-arrow-circle-right"></i>
+      </div>
+    </div>`
+    const connectContainer = bel`<div class="${css.connectContainer}">
+      ${generateInputContainer({name: 'contract_address', type:'address'})}
+      <div class=${css.connect} onclick=${()=>connectToContract()}
+        title="Enter address of the deployed contract you want to connect with. Select the correct network and click Connect. After that you will be able to interact with the chosen contract.">
+        <div class=${css.connectTitle}>Connect</div>
+        <i class="${css.icon} fa fa-arrow-circle-right"></i>
+      </div>
+    </div>`
+    var active, tabs = bel`<div class=${css.tabsContainer}>
+      ${active = bel`<div class="${css.tab} ${css.activetab}"
+      onclick=${e=>activatePublish(e)}>Publish</div>`}
+      <div class="${css.tab}"
+      onclick=${e=>activateConnect(e)}>Connect</div>
+    </div>`
+
+    topContainer.appendChild(tabs)
+    // First rendered tab is connect container if contract is already deployed from metadata
+    if (metadata.address) {
+      topContainer.appendChild(connectContainer)
+    } else {
+      topContainer.appendChild(ctor)
+    }
+
+      const cb = () => {
+        _connectToContract(metadata.address);
+      }
+
+      const node = bel`
+      <div class=${css.preview}>
+        <div class=${css.constructorFn}>
+          <div class=${css.contractName} onclick=${e=>toggleAll(e)} title="Expand to see the details">
+            ${metadata.constructorName}
+            <span class=${css.icon}><i class="fa fa-minus-circle" title="Expand to see the details"></i></span>
+          </div>
+        </div>
+        ${topContainer}
+        <div class=${css.functions}>${sorted.map(fn => { return functions(fn)})}</div>
+      </div>`
+
+      return {
+        node, cb
+      }
+  }
+}
+
+},{"./components":79,"./css":80,"bel":3,"ethers":32,"getArgs":83,"glossary":85,"input-payable":86,"loadingAnimation":87,"makeDeployReceipt":88,"makeReturn":89,"theme":91}]},{},[92])(92)
 });

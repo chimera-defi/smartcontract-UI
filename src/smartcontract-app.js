@@ -1,36 +1,27 @@
 const bel = require("bel")
-const csjs = require("csjs-inject")
 const ethers = require('ethers')
 const glossary = require('glossary')
 const loadingAnimation = require('loadingAnimation')
 const makeDeployReceipt = require('makeDeployReceipt')
 const getArgs = require('getArgs')
 const makeReturn = require('makeReturn')
-const shortenHexData = require('shortenHexData')
-const inputAddress = require("input-address")
-const inputArray = require("input-array")
-const inputInteger = require("input-integer")
-const inputBoolean = require("input-boolean")
-const inputString = require("input-string")
-const inputByte = require("input-byte")
 const inputPayable = require("input-payable")
-const copy = require('copy-text-to-clipboard')
 
+const { 
+  css,
+  injectHeadStyles
+} = require('./css');
+const {
+  generateInputContainer,
+  getContractFunctions,
+  getConstructorInput
+} = require('./components');
 const colors = require('theme')
 //const theme = require('theme')
 //const setTheme = require('setTheme')
 //setTheme(theme())
 
-// Styling variables
-
-var css
-var fonts = [ "https://use.fontawesome.com/releases/v5.8.2/css/all.css",
-  'https://fonts.googleapis.com/css?family=Overpass+Mono']
-var fontAwesome = bel`<link href=${fonts[0]} rel='stylesheet' type='text/css'>`
-var overpassMono = bel`<link href=${fonts[1]} rel='stylesheet' type='text/css'>`
-document.head.appendChild(fontAwesome)
-document.head.appendChild(overpassMono)
-
+injectHeadStyles();
 /******************************************************************************
   ETHERS
 ******************************************************************************/
@@ -55,6 +46,12 @@ async function getProvider() {
   return provider
 }
 
+// Helpers
+function getConstructorName(solcMetadata) {
+  if (solcMetadata.name) return solcMetadata.name;
+  var file = Object.keys(solcMetadata.settings.compilationTarget)[0]
+  return solcMetadata.settings.compilationTarget[file]
+}
 /*--------------------
       PAGE
 --------------------*/
@@ -62,11 +59,50 @@ module.exports = displayContractUI;
 // needed for greasy react hack
 window.displayContractUI = displayContractUI;
 
-function displayContractUI(result) {   // compilation result metadata
+function displayContractUI(result) {
+  // in case of address bound contracts, do not allow deploys
+  if (result[0].name && result[0].address) {
+    return modularDisplayContractUI(result);
+  } else {
+    return displayContractUIFull(result);
+  }
+}
+
+function modularDisplayContractUI(result) {
+  var opts = {
+    metadata: {
+      compiler: { },
+      name: result[0].name,
+      address: result[0].address,
+      language: null,
+      output: {
+        abi: result[0].abi
+      },
+      bytecode: null,
+      settings: {},
+      sources: { }
+    }
+  }
+  var solcMetadata = opts.metadata
+  var metadata = {
+    compiler: null,
+    compilationTarget: null,
+    constructorName: solcMetadata.name,
+    constructorInput: null,
+    functions: getContractFunctions(solcMetadata),
+    address: solcMetadata.address,
+    bytecode: solcMetadata.bytecode,
+    abi: solcMetadata.output.abi
+  }
+  return _displayContractUI(metadata);
+}
+
+function displayContractUIFull(result) {
   var opts = {
     metadata: {
       compiler: { version: result[0].compiler.version },
       language: result[0].compiler.language,
+      address: result[0].address,
       output: {
         abi: result[0].abi,
         devdoc: result[0].metadata.devdoc,
@@ -82,8 +118,25 @@ function displayContractUI(result) {   // compilation result metadata
       },
       sources: { '': result[0].sources.sourcecode }
     }
+  }
+  var solcMetadata = opts.metadata
+  var metadata = {
+    compiler: solcMetadata.compiler.version,
+    compilationTarget: solcMetadata.settings.compilationTarget,
+    constructorName: getConstructorName(solcMetadata),
+    constructorInput: getConstructorInput(solcMetadata),
+    functions: getContractFunctions(solcMetadata),
+    address: solcMetadata.address,
+    bytecode: solcMetadata.bytecode,
+    abi: solcMetadata.output.abi
+  }
+
+  return _displayContractUI(metadata);
 }
-  if (!opts || !opts.metadata) {
+
+function _displayContractUI(metadata) {   // compilation result metadata
+
+  if (!metadata) {
     return  bel`
     <div class=${css.preview}>
       <div class=${css.error}>
@@ -94,71 +147,10 @@ function displayContractUI(result) {   // compilation result metadata
     `
   }
 
-  if (!Array.isArray(opts.metadata)) {
-    var solcMetadata = opts.metadata
-    window.abi = solcMetadata.output.abi //@TODO remove after crosslink
-    window.bytecode = solcMetadata.bytecode //@TODO remove after crosslink
-    function getConstructorName() {
-      var file = Object.keys(solcMetadata.settings.compilationTarget)[0]
-      return solcMetadata.settings.compilationTarget[file]
-    }
-
-    function getConstructorInput() {
-      var payable = false
-      var inputs = solcMetadata.output.abi.map(fn => {
-        if (fn.type === "constructor") {
-          if (fn.stateMutability === 'payable') payable = true
-          return treeForm(fn.inputs)
-        }
-      })
-      if (payable === true) inputs.unshift(inputPayable('payable'))
-      return inputs
-    }
-
-    function getContractFunctions() {
-      return solcMetadata.output.abi.map(x => {
-        var obj = {}
-        obj.name = x.name
-        obj.type = x.type
-        obj.inputs = getAllInputs(x)
-        obj.outputs = getAllOutputs(x)
-        obj.stateMutability = x.stateMutability
-        return obj
-      })
-    }
-
-    function getAllInputs(fn) {
-      var inputs = []
-      if (fn.inputs) {
-        return treeForm(fn.inputs)
-      }
-    }
-
-    function getAllOutputs(fn) {
-      var outputs = []
-      if (fn.outputs) {
-        return treeForm(fn.outputs)
-      }
-    }
-
-    function treeForm(data) {
-      return data.map(x => {
-        if (x.components) {
-          return bel`<li><div>${x.name} (${x.type})</div><ul>${treeForm(x.components)}</ul></li>`
-        }
-        if (!x.components) {
-          return generateInputContainer(x)
-        }
-      })
-    }
-
-    var metadata = {
-      compiler: solcMetadata.compiler.version,
-      compilationTarget: solcMetadata.settings.compilationTarget,
-      constructorName: getConstructorName(),
-      constructorInput: getConstructorInput(),
-      functions: getContractFunctions()
-    }
+  if (!Array.isArray(metadata)) {
+    //@TODO remove after crosslink
+    window.abi = metadata.abi;
+    window.bytecode = metadata.bytecode;
 
     function sort (functions) {
       return functions.filter(x => x.type === 'function').sort((a, b) => {
@@ -180,44 +172,6 @@ function displayContractUI(result) {   // compilation result metadata
     }
 
     var sorted = sort(metadata.functions)
-
-    function generateInputContainer (field) {
-      var theme = { classes: css, colors}
-      var name = field.name
-      var type = field.type
-      var inputField = getInputField( {theme, type, cb})
-      var inputContainer = bel`
-        <div class=${css.inputContainer}>
-          <div class=${css.inputParam} title="data type: ${type}">${name || 'key'}</div>
-          <div class=${css.inputFields}>${inputField}</div>
-          <div class=${css.output}></div>
-        </div>`
-      return inputContainer
-      function cb (msg, el, value) {
-        var oldOutput = el.parentNode.querySelector("[class^='output']")
-        var output = oldOutput ? oldOutput : output = bel`<div class=${css.output}></div>`
-        output.innerHTML = ""
-        output.innerHTML = msg ? `<a class=${css.valError} title="${msg}"><i class="fa fa-exclamation"></i></a>` : `<a class=${css.valSuccess} title="The value is valid."><i class="fa fa-check"></i></a>`
-        el.parentNode.appendChild(output)
-      }
-    }
-
-    function getInputField ({ theme, type, cb}) {
-      var field
-      if ((type.search(/\]/) != -1)) {
-        var arrayInfo = type.split('[')[1]
-        var digit = arrayInfo.search(/\d/)
-        field = inputArray({ theme, type, cb })
-      } else {
-        if ((type.search(/\buint/) != -1) || (type.search(/\bint/) != -1)) field = inputInteger({ theme, type, cb })
-        if (type.search(/\bbyte/) != -1) field = inputByte({ theme, type, cb })
-        if (type.search(/\bstring/) != -1) field = inputString({ theme, type, cb })
-        if (type.search(/\bfixed/) != -1) field = inputInteger({ theme, type, cb })
-        if (type.search(/\bbool/) != -1) field = inputBoolean({ theme, type, cb })
-        if (type.search(/\baddress/) != -1) field = inputAddress({ theme, type, cb })
-      }
-      return field
-    }
 
     function functions (fn) {
       var label = fn.stateMutability
@@ -252,7 +206,7 @@ function displayContractUI(result) {   // compilation result metadata
         const contractType = contract.interface.functions[fnName].type
         let opts = {
           contract,
-          solcMetadata,
+          metadata,
           provider,
           fnName
         }
@@ -281,16 +235,6 @@ function displayContractUI(result) {   // compilation result metadata
       }
     }
 
-    async function executeTx (contract, fnName, provider, args, allArgs, opts) {
-      try {
-        let contractAsCurrentSigner = contract.connect(signer)
-        var tx
-        if (allArgs.overrides) { tx = await contractAsCurrentSigner.functions[fnName](...args, allArgs.overrides) }
-        else { tx = await contractAsCurrentSigner.functions[fnName](...args) }
-        loader.replaceWith(await makeReturn(opts))
-      } catch (e) { txReturn.children.length > 1 ? txReturn.removeChild(loader) : container.removeChild(txReturn) }
-    }
-
     async function makeContractCallable (contract, fnName, provider, args, allArgs) {
       const fn = contract.interface.functions[fnName]
       if (fn.outputs.length > 0) {
@@ -308,7 +252,6 @@ function displayContractUI(result) {   // compilation result metadata
         } catch (e) { console.log(e) }
       } else return []
     }
-
 
     function toggleAll (e) {
       var fnContainer = e.currentTarget.parentElement.parentElement.children[2]
@@ -385,8 +328,8 @@ function displayContractUI(result) {   // compilation result metadata
 
 // Create and deploy contract using WEB3
     async function deployContract() {
-      let abi = solcMetadata.output.abi
-      let bytecode = opts.metadata.bytecode
+      let abi = metadata.abi
+      let bytecode = metadata.bytecode
       provider =  await getProvider()
       let signer = await provider.getSigner()
       var el = document.querySelector("[class^='ctor']")
@@ -411,6 +354,7 @@ function displayContractUI(result) {   // compilation result metadata
     }
 
     function activateConnect (e) {
+      console.log(e)
       if (active != e.target) {
         setToActive(e.target)
         topContainer.removeChild(ctor)
@@ -426,14 +370,17 @@ function displayContractUI(result) {   // compilation result metadata
       }
     }
 
-    async function connectToContract () {
-      let abi = solcMetadata.output.abi
-      let bytecode = opts.metadata.bytecode
-      provider =  await getProvider()
-      let signer = await provider.getSigner()
+    async function connectToContract() {
       var el = document.querySelector("[class^='connectContainer']")
       var allArgs = getArgs(el, 'inputContainer')
       const address = allArgs.args[0]
+      await _connectToContract(address);
+    }
+
+    async function _connectToContract (address, tries=0) {
+      var el = document.querySelector("[class^='connectContainer']")
+      let abi = metadata.abi
+      provider =  await getProvider()
       el.replaceWith(bel`<div class=${css.connecting}>
         Connecting to the contract ${address}
         ${loadingAnimation(colors)}</div>`)
@@ -453,6 +400,11 @@ function displayContractUI(result) {   // compilation result metadata
         let loader = document.querySelector("[class^='connecting']")
         loader.replaceWith(connectContainer)
         console.log(e)
+        if (tries==0) {
+          return _connectToContract(address,1);
+        } else {
+          alert("Failed to connect to contract. Please try manually");
+        }
       }
     }
 
@@ -495,475 +447,33 @@ function displayContractUI(result) {   // compilation result metadata
       <div class="${css.tab}"
       onclick=${e=>activateConnect(e)}>Connect</div>
     </div>`
+
     topContainer.appendChild(tabs)
-    topContainer.appendChild(ctor)
+    // First rendered tab is connect container if contract is already deployed from metadata
+    if (metadata.address) {
+      topContainer.appendChild(connectContainer)
+    } else {
+      topContainer.appendChild(ctor)
+    }
 
-    return bel`
-    <div class=${css.preview}>
-      <div class=${css.constructorFn}>
-        <div class=${css.contractName} onclick=${e=>toggleAll(e)} title="Expand to see the details">
-          ${metadata.constructorName}
-          <span class=${css.icon}><i class="fa fa-minus-circle" title="Expand to see the details"></i></span>
+      const cb = () => {
+        _connectToContract(metadata.address);
+      }
+
+      const node = bel`
+      <div class=${css.preview}>
+        <div class=${css.constructorFn}>
+          <div class=${css.contractName} onclick=${e=>toggleAll(e)} title="Expand to see the details">
+            ${metadata.constructorName}
+            <span class=${css.icon}><i class="fa fa-minus-circle" title="Expand to see the details"></i></span>
+          </div>
         </div>
-      </div>
-      ${topContainer}
-      <div class=${css.functions}>${sorted.map(fn => { return functions(fn)})}</div>
-    </div>`
+        ${topContainer}
+        <div class=${css.functions}>${sorted.map(fn => { return functions(fn)})}</div>
+      </div>`
+
+      return {
+        node, cb
+      }
   }
-}
-
-/******************************************************************************
-  CSS
-******************************************************************************/
-
-css = csjs`
-  @media only screen and (max-width: 3000px) {
-    .preview {
-      padding: 1% 2%;
-      min-width: 350px;
-      min-height: 100vh;
-      font-family: 'Overpass Mono', sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      background-color: ${colors.dark};
-      color: ${colors.whiteSmoke};
-    }
-    .error {
-      border: 1px solid ${colors.violetRed};
-      position: relative;
-      padding: 1em;
-    }
-    .errorTitle {
-      position: absolute;
-      top: -14px;
-      left: 20px;
-      background-color: ${colors.dark};
-      padding: 0 5px 0 5px;
-      font-size: 1.3rem;
-      color: ${colors.violetRed};
-    }
-    .errorIcon {
-      font-size: 1.3rem;
-    }
-    .visible {
-      visibility: visible;
-      height: 100%;
-      padding: 0;
-    }
-    .hidden {
-      visibility: hidden;
-      height: 0;
-    }
-    .txReturn {
-      position: relative;
-      border: 2px dashed ${colors.darkSmoke};
-      border-top: none;
-      min-width: 230px;
-      top: -41px;
-      left: 20px;
-      min-height: 80px;
-      width: 546px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-    }
-    .deploying, .connecting {
-      font-size: 0.9rem;
-      margin-left: 3%;
-    }
-    .txReturnItem {
-      position: relative;
-      font-size: 0.7rem;
-      display: flex;
-      color: ${colors.whiteSmoke};
-      border: 1px solid ${colors.darkSmoke};
-      width: 87%;
-      margin: 3%;
-      padding: 3%;
-      justify-content: space-between;
-      flex-direction: column;
-    }
-    .contractName {
-      cursor: pointer;
-      font-size: 2rem;
-      font-weight: bold;
-      color: ${colors.whiteSmoke};
-      margin: 10px 0 20px 10px;
-      display: flex;
-      align-items: end;
-    }
-    .contractName:hover {
-      ${hover()}
-    }
-    .fnName {
-      font-size: 1em;
-      display: flex;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .faIcon {
-      position: absolute;
-      top: -16px;
-      left: 0;
-    }
-    .name {
-      font-size: 0.9em;
-    }
-    .stateMutability {
-      margin-left: 5px;
-      color: ${colors.whiteSmoke};
-      border-radius: 20px;
-      border: 1px solid;
-      padding: 1px;
-      font-size: 0.9rem;
-      width: 65px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .constructorFn {
-      padding-top: 18px;
-      width: 600px;
-    }
-    .functions {
-      font-size: 1.3rem;
-      width: 570px;
-    }
-    .title {
-      font-size: 1.3rem;
-      display: flex;
-      align-items: baseline;
-      position: absolute;
-      top: -13px;
-      left: 20px;
-      background-color: ${colors.dark};
-    }
-    .title:hover {
-      ${hover()}
-    }
-    .deployTitle, .connectTitle {
-      font-size: 1.3rem;
-      background-color: ${colors.dark};
-      padding: 0 5px 0 0;
-      font-weight: 800;
-    }
-    .deploy, .connect {
-      color: ${colors.whiteSmoke};
-      display: flex;
-      align-items: center;
-      bottom: -15px;
-      right: -12px;
-      font-size: 1.8rem;
-      position: absolute;
-      background-color: ${colors.dark};
-      cursor: pointer;
-    }
-    .deploy:hover, .connect:hover {
-      ${hover()}
-    }
-    .send {
-      display: flex;
-      align-items: baseline;
-      bottom: -16px;
-      right: 13px;
-      font-size: 2rem;
-      position: absolute;
-      background-color: ${colors.dark};
-      color: ${colors.darkSmoke};
-      padding-right: 5px;
-    }
-    .send:hover {
-      ${hover()}
-    }
-    .bounce {
-      animation: bounceRight 2s infinite;
-    }
-    @-webkit-keyframes bounceRight {
-    0% {-webkit-transform: translateX(0);
-      transform: translateX(0);}
-    20% {-webkit-transform: translateX(0);
-      transform: translateX(0);}
-    40% {-webkit-transform: translateX(-30px);
-      transform: translateX(-30px);}
-    50% {-webkit-transform: translateX(0);
-      transform: translateX(0);}
-    60% {-webkit-transform: translateX(-15px);
-      transform: translateX(-15px);}
-    80% {-webkit-transform: translateX(0);
-      transform: translateX(0);}
-    100% {-webkit-transform: translateX(0);
-      transform: translateX(0);}
-    }
-    @-moz-keyframes bounceRight {
-      0% {transform: translateX(0);}
-      20% {transform: translateX(0);}
-      40% {transform: translateX(-30px);}
-      50% {transform: translateX(0);}
-      60% {transform: translateX(-15px);}
-      80% {transform: translateX(0);}
-      100% {transform: translateX(0);}
-    }
-    @keyframes bounceRight {
-      0% {-ms-transform: translateX(0);
-        transform: translateX(0);}
-      20% {-ms-transform: translateX(0);
-        transform: translateX(0);}
-      40% {-ms-transform: translateX(-30px);
-        transform: translateX(-30px);}
-      50% {-ms-transform: translateX(0);
-        transform: translateX(0);}
-      60% {-ms-transform: translateX(-15px);
-        transform: translateX(-15px);}
-      80% {-ms-transform: translateX(0);
-        transform: translateX(0);}
-      100% {-ms-transform: translateX(0);
-        transform: translateX(0);}
-    }
-    .fnContainer {
-      position: relative;
-    }
-    .function {
-      display: flex;
-      flex-direction: column;
-      position: relative;
-      margin-left: 20px;
-      margin-bottom: 10%;
-      border: 2px dashed ${colors.darkSmoke};
-    }
-    .topContainer {
-      display: flex;
-      flex-direction: column;
-      position: relative;
-      border: 2px dashed ${colors.darkSmoke};
-      padding: 2em 1em 3em 0em;
-      width: 540px;
-      margin: 3em 0 5em 20px;
-      font-size: 0.75em;
-    }
-    .tabsContainer {
-      display: flex;
-      position: absolute;
-      top: -30px;
-      left: -1px;
-      width: 33%;
-    }
-    .tab {
-      border: 2px dashed ${colors.darkSmoke};
-      color: ${colors.slateGrey};
-      border-bottom: none;
-      box-sizing: border-box;
-      padding: 3% 13%;
-      height: 29px;
-      width: 100%;
-      margin-right: 5px;
-      font-size: 0.8rem;
-    }
-    .tab:hover {
-      ${hover()}
-    }
-    .activetab {
-      font-weight: bold;
-      color: ${colors.whiteSmoke};
-    }
-    .ctor {}
-    .connectContainer {}
-    .signature {}
-    .pure {
-      color: ${colors.yellow};
-    }
-    .view {
-      color: ${colors.lavender};
-    }
-    .nonpayable {
-      color: ${colors.turquoise};
-    }
-    .payable {
-      color: ${colors.orange};
-    }
-    .icon {
-      margin-left: 5px;
-      font-size: 0.9em;
-    }
-    .output {
-      font-size: 0.7rem;
-      display: flex;
-      align-self: center;
-      position: absolute;
-      right: -17px;
-    }
-    .valError {
-      color: ${colors.violetRed};
-      display: flex;
-      align-self: center;
-    }
-    .valSuccess {
-      color: ${colors.aquaMarine};
-      display: flex;
-      align-self: center;
-    }
-    .inputContainer {
-      font-family: 'Overpass Mono', sans-serif;
-      margin: 15px 0 15px 0;
-      display: flex;
-      align-items: center;
-      font-size: 0.9rem;
-      color: ${colors.whiteSmoke};
-    }
-    .inputParam {
-      color: ${colors.slateGrey};
-      display: flex;
-      justify-content: center;
-      font-size: 0.9rem;
-      display: flex;
-      min-width: 200px;
-    }
-    .inputFields {
-    }
-    .inputType {
-    }
-    .inputField {
-      ${inputStyle()}
-      position: relative;
-      font-size: 0.9rem;
-      color: ${colors.whiteSmoke};
-      border-color: ${colors.slateGrey};
-      border-radius: 0.2em;
-      background-color: ${colors.darkSmoke};
-      text-align: center;
-      display: flex;
-      width: 100%;
-    }
-    .inputField::placeholder {
-      color: ${colors.whiteSmoke};
-      text-align: center;
-      opacity: 0.5;
-    }
-    .integerValue {
-      ${inputStyle()}
-      font-size: 0.9rem;
-      color: ${colors.whiteSmoke};
-      background-color: ${colors.darkSmoke};
-      border-radius: 0.2em;
-      display: flex;
-      text-align: center;
-      width: 60%;
-    }
-    .integerValue::placeholder {
-      color: ${colors.whiteSmoke};
-      text-align: center;
-      opacity: 0.5;
-    }
-    .integerSlider {
-      width: 40%;
-      border: 1px solid ${colors.slateGrey};
-      background: ${colors.darkSmoke};
-      -webkit-appearance: none;
-      height: 1px;
-    }
-    .integerSlider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      border: 1px solid ${colors.slateGrey};
-      border-radius: 0.2em;
-      height: 22px;
-      width: 10px;
-      background: ${colors.darkSmoke};
-      cursor: pointer;
-    }
-    .integerField {
-      position: relative;
-      display: flex;
-      width: 300px;
-      align-items: center;
-    }
-    .booleanField {
-      position: relative;
-      display: flex;
-      width: 300px;
-      align-items: baseline;
-      font-size: 0.9rem;
-    }
-    .stringField {
-      position: relative;
-      display: flex;
-      width: 300px;
-      justify-content: center;
-    }
-    .byteField {
-      position: relative;
-      display: flex;
-      width: 300px;
-      justify-content: center;
-    }
-    .addressField {
-      position: relative;
-      display: flex;
-      width: 300px;
-      justify-content: center;
-    }
-    .keyField {
-      ${inputStyle()}
-      border-right: none;
-      background-color: ${colors.aquaMarine};
-      border-color: ${colors.whiteSmoke};
-    }
-    .false {
-      ${inputStyle()}
-      border-right: none;
-      width: 50%;
-      text-align: center;
-      cursor: pointer;
-    }
-    .true {
-      ${inputStyle()}
-      width: 50%;
-      text-align: center;
-      cursor: pointer;
-    }
-    .arrayContainer {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-top: 10px;
-    }
-    .arrayPlusMinus {
-      margin: 10px;
-    }
-    .arrayPlus {
-      cursor: pointer;
-    }
-    .arrayMinus {
-      cursor: pointer;
-    }
-  }
-  @media only screen and (max-device-width: 480px) {
-    html {
-      font-size: 30px;
-    }
-    .constructorFn, .functions {
-      width: 80%;
-    }
-    .title {
-      top: -30px;
-    }
-  }
-`
-
-function inputStyle() {
-  return `
-    border: 1px solid ${colors.slateGrey};
-    background-color: ${colors.darkSmoke};
-    color: ${colors.slateGrey};
-    padding: 5px;
-  `
-}
-
-function hover () {
-  return `
-    cursor: pointer;
-    opacity: 0.6;
-  `
 }
