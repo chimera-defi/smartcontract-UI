@@ -69,6 +69,13 @@ function displayContractUI(result) {
 }
 
 function modularDisplayContractUI(result) {
+  // Triggered if the result array at posn 0 has both
+  /**
+   * 1. name - contract name
+   * 2. address - address the contract is deployed to
+   * Extra:
+   * 1. Specify `excludedFunctions` to exclude printing some functions to UI
+   */
   var opts = {
     metadata: {
       compiler: { },
@@ -83,6 +90,13 @@ function modularDisplayContractUI(result) {
       sources: { }
     }
   }
+
+  // filter excluded functions from uI
+  let excludedFunctions = result[0].excludedFunctions;
+  if (excludedFunctions && excludedFunctions.length > 0) {
+    opts.metadata = opts.metadata.filter(x => excludedFunctions.indexOf(x.name) == -1);
+  }
+
   var solcMetadata = opts.metadata
   var metadata = {
     compiler: null,
