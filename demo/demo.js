@@ -9,6 +9,10 @@ const vefabi = require('./sampleContracts/vef.abi.json');
   const version = getCompilerVersion(releases, sourcecode)
   const compiler = await solcjs(version).catch(printError)
   const result = await compiler(sourcecode).catch(printError)
+  // let {node, cb} = smartcontractapp(result);
+  // document.body.appendChild(node);
+
+  // new test
   result[0].abi = vefabi;
   console.log(result)
   result[0].address = '0xeE5bd4b9C875BE3958b1255D181B8B3E978903b9';

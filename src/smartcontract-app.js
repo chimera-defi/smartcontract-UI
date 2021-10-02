@@ -108,7 +108,8 @@ function modularDisplayContractUI(result) {
     bytecode: solcMetadata.bytecode,
     abi: solcMetadata.output.abi
   }
-  return _displayContractUI(metadata);
+
+  return _displayContractUI(metadata, solcMetadata);
 }
 
 function displayContractUIFull(result) {
@@ -145,10 +146,10 @@ function displayContractUIFull(result) {
     abi: solcMetadata.output.abi
   }
 
-  return _displayContractUI(metadata);
+  return _displayContractUI(metadata, solcMetadata);
 }
 
-function _displayContractUI(metadata) {   // compilation result metadata
+function _displayContractUI(metadata, solcMetadata) {   // compilation result metadata
 
   if (!metadata) {
     return  bel`
@@ -220,7 +221,7 @@ function _displayContractUI(metadata) {   // compilation result metadata
         const contractType = contract.interface.functions[fnName].type
         let opts = {
           contract,
-          metadata,
+          solcMetadata,
           provider,
           fnName
         }
