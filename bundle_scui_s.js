@@ -20885,35 +20885,35 @@ function modularDisplayContractUI(result) {
 function displayContractUIFull(result) {
   var opts = {
     metadata: {
-      compiler: { version: result[0].compiler.version },
-      language: result[0].compiler.language,
+      compiler: { version: result[0].compiler?.version },
+      language: result[0].compiler?.language,
       address: result[0].address,
       output: {
         abi: result[0].abi,
-        devdoc: result[0].metadata.devdoc,
-        userdoc: result[0].metadata.userdoc
+        devdoc: result[0].metadata?.devdoc,
+        userdoc: result[0].metadata?.userdoc
       },
-      bytecode: result[0].binary.bytecodes.bytecode,
+      bytecode: result[0].binary?.bytecodes?.bytecode,
       settings: {
-        compilationTarget: { '': result[0].sources.compilationTarget },
-        evmVersion: result[0].compiler.evmVersion,
-        libraries: result[0].sources.libraries,
-        optimizer: { enabled: result[0].compiler.optimizer, runs: result[0].compiler.runs },
-        remapings: result[0].sources.remappings
+        compilationTarget: { '': result[0].sources?.compilationTarget },
+        evmVersion: result[0].compiler?.evmVersion,
+        libraries: result[0].sources?.libraries,
+        optimizer: { enabled: result[0].compiler?.optimizer, runs: result[0].compiler?.runs },
+        remapings: result[0].sources?.remappings
       },
-      sources: { '': result[0].sources.sourcecode }
+      sources: { '': result[0].sources?.sourcecode }
     }
   }
   var solcMetadata = opts.metadata
   var metadata = {
-    compiler: solcMetadata.compiler.version,
-    compilationTarget: solcMetadata.settings.compilationTarget,
+    compiler: solcMetadata.compiler?.version,
+    compilationTarget: solcMetadata.settings?.compilationTarget,
     constructorName: getConstructorName(solcMetadata),
     constructorInput: getConstructorInput(solcMetadata),
     functions: getContractFunctions(solcMetadata),
     address: solcMetadata.address,
     bytecode: solcMetadata.bytecode,
-    abi: solcMetadata.output.abi
+    abi: solcMetadata.output?.abi
   }
 
   return _displayContractUI(metadata, solcMetadata);
@@ -21242,6 +21242,7 @@ function _displayContractUI(metadata, solcMetadata) {   // compilation result me
     }
 
       const cb = () => {
+        if (!metadata.address) return;
         _connectToContract(metadata.address);
       }
 
