@@ -1,14 +1,14 @@
 
 ## Greasy react hack
+
+This can be used within react apps to auto-generate and display a UI from a smart contract given the ABI.  
+
 Create a bundle using `npm run-script buildSrc`, add it to the `public` folder in a react app. 
 Add the following to load it within a react app. 
 ```
 useEffect(() => {
   const script = document.createElement('script');
 
-  // script.src = "https://use.typekit.net/foobar.js";
-  // script.src = "../../../node_modules/smartcontract-app/src/smartcontract-app.js";
-  // script.src = "../../../node_modules/smartcontract-app/src/smartcontract-app.js";
   script.src = "/smartcontract-app.js"
   script.async = true;
   let scriptLoaded = function() {
@@ -24,6 +24,26 @@ useEffect(() => {
 }, []);
 ```
 
+You can then call the the `displayContractUI` function on `window`.   
+You can either pass in the traditional arguments from the `demo.js` file here. 
+Or directly connect to a contract on your UI by passing in some extra args which in turn calls the `modularDisplayContractUI` fn.
+See below for trigger: 
+```
+function modularDisplayContractUI(result) {
+  // Triggered if the result array at posn 0 has both
+  /**
+   * 1. name - contract name
+   * 2. address - address the contract is deployed to
+   * Extra:
+   * 1. Specify `excludedFunctions` to exclude printing some functions to UI
+   */
+```
+
+Example payload: https://github.com/chimera-defi/factory-ui/blob/master/utils/factories_rinkeby.json#L2   
+
+Full React UI example:   
+https://github.com/chimera-defi/factory-ui/blob/master/pages/index.js#L47
+Hosted at https://factory.sharedtools.org 
 
 [![Join the chat at https://gitter.im/playproject-io/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/playproject-io/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
