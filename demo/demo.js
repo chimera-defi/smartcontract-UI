@@ -9,8 +9,6 @@ const vefabi = require('./sampleContracts/vef.abi.json');
   const version = getCompilerVersion(releases, sourcecode)
   const compiler = await solcjs(version).catch(printError)
   const result = await compiler(sourcecode).catch(printError)
-  // let {node, cb} = smartcontractapp(result);
-  // document.body.appendChild(node);
 
   // new test
   result[0].abi = vefabi;
@@ -20,9 +18,9 @@ const vefabi = require('./sampleContracts/vef.abi.json');
 
   let {node, cb} = smartcontractapp(result);
   document.body.appendChild(node);
+  // Cb is used to connected to provided address in metadata
   cb();
 
-  // document.body.appendChild(smartcontractapp(result, result.address))
 })()
 
 function getCompilerVersion (releases, code) {

@@ -7,7 +7,7 @@ const inputInteger = require("input-integer")
 const inputBoolean = require("input-boolean")
 const inputString = require("input-string")
 const inputByte = require("input-byte")
-// const inputPayable = require("input-payable")
+const inputPayable = require("input-payable")
 
     function generateInputContainer (field) {
       var theme = { classes: css, colors}
