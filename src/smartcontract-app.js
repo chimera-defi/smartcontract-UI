@@ -74,7 +74,7 @@ function modularDisplayContractUI(result) {
    * 1. name - contract name
    * 2. address - address the contract is deployed to
    * Extra:
-   * 1. Specify `excludedFunctions` to exclude printing some functions to UI
+   * 1. Specify `excludedFunctions` to exclude printing some functions to UI. Or `includedFunctions` to only include those fns
    */
   var opts = {
     metadata: {
@@ -91,10 +91,14 @@ function modularDisplayContractUI(result) {
     }
   }
 
-  // filter excluded functions from uI
+  // filter excluded/included functions from UI
   let excludedFunctions = result[0].excludedFunctions;
   if (excludedFunctions && excludedFunctions.length > 0) {
     opts.metadata = opts.metadata.filter(x => excludedFunctions.indexOf(x.name) == -1);
+  }
+  let includedFunctions = result[0].includedFunctions;
+  if (includedFunctions && includedFunctions.length > 0) {
+    opts.metadata = opts.metadata.filter(x => includedFunctions.indexOf(x.name) !== -1);
   }
 
   var solcMetadata = opts.metadata
